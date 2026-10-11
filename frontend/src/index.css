@@ -1,0 +1,20 @@
+@import url('https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap');
+
+:root {
+  --primary: #7e22ce;
+  --primary-light: #a855f7;
+  --bg-color: #f8f9fa;
+  --text-main: #1f2937;
+}
+
+body {
+  margin: 0;
+  font-family: 'Prompt', sans-serif; /* ใช้ฟอนต์ Prompt ให้ดูทันสมัย */
+  background-color: var(--bg-color);
+  color: var(--text-main);
+  overflow-x: hidden;
+}
+
+* {
+  box-sizing: border-box;
+}
