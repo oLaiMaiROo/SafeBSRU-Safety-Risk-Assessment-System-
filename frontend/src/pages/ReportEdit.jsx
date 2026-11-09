@@ -4,7 +4,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { ShieldAlert, ArrowLeft, Save, CheckCircle2, ImagePlus, X, User, MapPin, GraduationCap, Briefcase } from 'lucide-react';
 import { SeverityPicker } from '../components/Severity';
 import { DEFAULT_SEVERITY_LEVEL } from '../utils/severity';
-import { API_URL, imageUrl, readApiError } from '../utils/api';
+import { authFetch, imageUrl, readApiError } from '../utils/api';
 import { todayISO } from '../utils/date';
 import { useDepartments, STUDENT_DEPARTMENT_GROUP } from '../utils/useDepartments';
 
@@ -39,7 +39,7 @@ const ReportEdit = () => {
 
   // 🌟 ดึงข้อมูลเก่ามาใส่ฟอร์ม
   useEffect(() => {
-    fetch(`${API_URL}/api/reports/${id}`)
+    authFetch(`/api/reports/${id}`)
       .then(res => {
         if (res.status === 404) throw new Error('notfound');
         if (!res.ok) throw new Error('error');
@@ -134,7 +134,7 @@ const ReportEdit = () => {
     });
 
     try {
-      const response = await fetch(`${API_URL}/api/reports/${id}`, {
+      const response = await authFetch(`/api/reports/${id}`, {
         method: 'PUT',
         body: submitData
       });
@@ -168,7 +168,7 @@ const ReportEdit = () => {
             <ShieldAlert color="#3b82f6" size={32} />
             <div>
               <h1 style={{ margin: 0, fontSize: '24px', color: '#0f172a' }}>แก้ไขข้อมูลอุบัติเหตุ (ID: {id})</h1>
-              <p style={{ margin: '5px 0 0 0', color: '#64748b', fontSize: '14px' }}>เปลี่ยนแปลงข้อมูลการแจ้งเหตุ (เปลี่ยนสถานะได้ที่หน้ารายละเอียด)</p>
+              <p style={{ margin: '5px 0 0 0', color: '#64748b', fontSize: '14px' }}>เปลี่ยนแปลงข้อมูลการแจ้งเหตุ</p>
             </div>
           </div>
 

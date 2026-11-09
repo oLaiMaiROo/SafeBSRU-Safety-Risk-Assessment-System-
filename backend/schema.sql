@@ -4,7 +4,7 @@
 --   สคริปต์จะสร้างฐานข้อมูลถ้ายังไม่มี แล้วรันไฟล์นี้ จากนั้นสร้างแอดมินคนแรกด้วย node create-admin.js
 --   ขั้นตอนเต็มอยู่ใน backend/DATABASE.md
 --
--- ไฟล์นี้ตรงกับโครงสร้างหลังรัน migrations/001_relations_and_cleanup.sql
+-- ไฟล์นี้ตรงกับโครงสร้างหลังรัน migrations/ ถึงไฟล์ 002_remove_status.sql
 -- ถ้าเพิ่ม migration ใหม่ ต้องแก้ไฟล์นี้ให้ตรงกันด้วย
 -- ทั้งไฟล์อยู่ใน transaction เดียว ถ้ามีตารางอยู่แล้วจะหยุดทั้งหมดโดยไม่เปลี่ยนอะไร
 
@@ -14,7 +14,7 @@ BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 -- ---------------------------------------------------------------
--- ผู้ดูแลระบบ
+-- ผู้ดูแลระบบ (ใช้สำหรับเข้าสู่ระบบ ไม่เชื่อมกับตารางอื่น)
 -- ---------------------------------------------------------------
 CREATE TABLE admins (
     id             SERIAL       PRIMARY KEY,
@@ -61,8 +61,6 @@ CREATE TABLE reports (
     risk_category   VARCHAR(100) NOT NULL,
     description     TEXT,
     severity_level  SMALLINT     NOT NULL,
-    status          VARCHAR(50)  NOT NULL DEFAULT 'รอดำเนินการ',
-    handled_by      INTEGER,                          -- แอดมินที่รับเรื่อง
     created_at      TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT reports_reporter_type_check
@@ -73,14 +71,10 @@ CREATE TABLE reports (
         (reporter_type = 'student'   AND position IS NULL) OR
         (reporter_type = 'personnel' AND student_id IS NULL AND student_year IS NULL)
     ),
-    CONSTRAINT reports_status_check
-        CHECK (status IN ('รอดำเนินการ', 'กำลังดำเนินการ', 'เสร็จสิ้น')),
     CONSTRAINT reports_department_id_fkey
         FOREIGN KEY (department_id) REFERENCES departments(id),
     CONSTRAINT reports_severity_level_fkey
-        FOREIGN KEY (severity_level) REFERENCES severity_levels(level),
-    CONSTRAINT reports_handled_by_fkey
-        FOREIGN KEY (handled_by) REFERENCES admins(id) ON DELETE SET NULL
+        FOREIGN KEY (severity_level) REFERENCES severity_levels(level)
 );
 
 -- ---------------------------------------------------------------
@@ -98,7 +92,6 @@ CREATE TABLE report_images (
 
 CREATE INDEX reports_department_id_idx   ON reports (department_id);
 CREATE INDEX reports_severity_level_idx  ON reports (severity_level);
-CREATE INDEX reports_handled_by_idx      ON reports (handled_by);
 CREATE INDEX reports_incident_date_idx   ON reports (incident_date);
 CREATE INDEX report_images_report_id_idx ON report_images (report_id);
 

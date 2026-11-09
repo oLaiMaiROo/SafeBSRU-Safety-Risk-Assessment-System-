@@ -3,6 +3,8 @@ const cors = require('cors');
 const multer = require('multer'); // ตัวช่วยรับไฟล์รูป
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
+const jwt = require('jsonwebtoken');
 const pool = require('./db'); // การเชื่อมต่อฐานข้อมูล (ค่าอยู่ในไฟล์ .env)
 
 const app = express();
@@ -39,10 +41,47 @@ pool.query('SELECT 1')
     .catch((err) => console.error('❌ เชื่อมต่อฐานข้อมูลไม่สำเร็จ:', err.message));
 
 // ========================================
-// ตัวช่วยทั่วไป
+// 🔑 การยืนยันตัวตนผู้ดูแลระบบ (token แบบ JWT)
 // ========================================
 
-const REPORT_STATUSES = ['รอดำเนินการ', 'กำลังดำเนินการ', 'เสร็จสิ้น'];
+// กุญแจเซ็น token อยู่ใน .env (JWT_SECRET) ถ้าไม่ได้ตั้งไว้ จะสุ่มใหม่ทุกครั้งที่เปิดเซิร์ฟเวอร์ (แอดมินต้องล็อกอินใหม่หลังรีสตาร์ต)
+const JWT_SECRET = process.env.JWT_SECRET || crypto.randomBytes(48).toString('hex');
+if (!process.env.JWT_SECRET) {
+    console.warn('⚠️ ยังไม่ได้ตั้ง JWT_SECRET ในไฟล์ .env ระบบสุ่มกุญแจชั่วคราวให้ แอดมินต้องล็อกอินใหม่ทุกครั้งที่รีสตาร์ตเซิร์ฟเวอร์');
+}
+const TOKEN_LIFETIME = '8h';
+
+const signToken = (admin) => jwt.sign({ id: admin.id, username: admin.username }, JWT_SECRET, { expiresIn: TOKEN_LIFETIME });
+
+const readToken = (req) => {
+    const header = req.headers.authorization || '';
+    const match = /^Bearer\s+(.+)$/i.exec(header);
+    if (!match) return null;
+    try {
+        return jwt.verify(match[1], JWT_SECRET);
+    } catch {
+        return null;
+    }
+};
+
+// ใช้กับ API ที่เฉพาะผู้ดูแลระบบเรียกได้ (ตรวจด้วยว่าบัญชียังอยู่ในระบบ)
+const requireAdmin = async (req, res, next) => {
+    const payload = readToken(req);
+    if (!payload) return res.status(401).json({ error: 'กรุณาเข้าสู่ระบบ' });
+    try {
+        const found = await pool.query('SELECT id, username FROM admins WHERE id = $1', [payload.id]);
+        if (found.rows.length === 0) return res.status(401).json({ error: 'ไม่พบบัญชีผู้ดูแลระบบนี้ กรุณาเข้าสู่ระบบใหม่' });
+        req.admin = found.rows[0];
+        next();
+    } catch (err) {
+        console.error('Auth Error:', err.message);
+        res.status(500).json({ error: 'ตรวจสอบการเข้าสู่ระบบไม่สำเร็จ' });
+    }
+};
+
+// ========================================
+// ตัวช่วยทั่วไป
+// ========================================
 
 // ข้อความว่าง/ช่องว่างล้วน ให้เป็น null
 const text = (value) => {
@@ -73,7 +112,7 @@ const removeFiles = (fileNames) => {
 // แปลง error จาก PostgreSQL ที่เกิดจากข้อมูลผิด ให้เป็นข้อความที่บอกผู้ใช้ได้ (HTTP 400)
 const DB_ERROR_MESSAGES = {
     '23502': 'กรอกข้อมูลที่จำเป็นไม่ครบ',
-    '23503': 'ข้อมูลอ้างอิงไม่ถูกต้อง (หน่วยงาน ระดับความรุนแรง หรือผู้ดูแลระบบ)',
+    '23503': 'ข้อมูลอ้างอิงไม่ถูกต้อง (หน่วยงาน หรือระดับความรุนแรง)',
     '23505': 'ข้อมูลนี้มีอยู่ในระบบแล้ว',
     '23514': 'ข้อมูลไม่อยู่ในรูปแบบที่ระบบรับได้',
     '22007': 'รูปแบบวันที่ไม่ถูกต้อง',
@@ -103,7 +142,8 @@ app.post('/api/login', async (req, res) => {
         if (result.rows.length > 0) {
             const adminData = result.rows[0];
             await pool.query('UPDATE admins SET is_online = true WHERE id = $1', [adminData.id]);
-            res.json({ success: true, admin: adminData, message: 'เข้าสู่ระบบสำเร็จ' });
+            // token ใช้แนบไปกับทุกคำขอของหน้าแอดมิน (Authorization: Bearer <token>)
+            res.json({ success: true, admin: adminData, token: signToken(adminData), message: 'เข้าสู่ระบบสำเร็จ' });
         } else {
             res.status(401).json({ success: false, message: 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง' });
         }
@@ -114,11 +154,12 @@ app.post('/api/login', async (req, res) => {
 });
 
 // API 1.5: สำหรับล็อกเอาต์ (Logout) + ตั้งสถานะเป็น Offline
+// token หมดอายุแล้วก็ออกจากระบบได้ ตั้ง offline ให้เฉพาะเมื่อ token ยังใช้ได้
 app.post('/api/logout', async (req, res) => {
     try {
-        const id = int(req.body.id);
-        if (id) {
-            await pool.query('UPDATE admins SET is_online = false WHERE id = $1', [id]);
+        const payload = readToken(req);
+        if (payload) {
+            await pool.query('UPDATE admins SET is_online = false WHERE id = $1', [payload.id]);
         }
         res.json({ success: true, message: 'ออกจากระบบสำเร็จ' });
     } catch (err) {
@@ -128,7 +169,7 @@ app.post('/api/logout', async (req, res) => {
 });
 
 // API 2: ดึงรายชื่อ Admin ทั้งหมด (พร้อมสถานะออนไลน์)
-app.get('/api/admins', async (req, res) => {
+app.get('/api/admins', requireAdmin, async (req, res) => {
     try {
         const result = await pool.query('SELECT id, username, full_name, is_online, created_at FROM admins ORDER BY is_online DESC, id ASC');
         res.json(result.rows);
@@ -139,7 +180,7 @@ app.get('/api/admins', async (req, res) => {
 });
 
 // API 3: สำหรับเพิ่ม Admin ใหม่
-app.post('/api/admins', async (req, res) => {
+app.post('/api/admins', requireAdmin, async (req, res) => {
     try {
         const username = text(req.body.username);
         const password = String(req.body.password ?? '');
@@ -168,7 +209,7 @@ app.post('/api/admins', async (req, res) => {
 });
 
 // API 4: สำหรับดึงข้อมูลโปรไฟล์แอดมินมาแสดง (รายคน)
-app.get('/api/admins/:id', async (req, res) => {
+app.get('/api/admins/:id', requireAdmin, async (req, res) => {
     try {
         const id = int(req.params.id);
         if (!id) return res.status(404).json({ message: 'ไม่พบข้อมูลผู้ดูแลระบบ' });
@@ -185,13 +226,14 @@ app.get('/api/admins/:id', async (req, res) => {
     }
 });
 
-// API 5: สำหรับแก้ไขโปรไฟล์แอดมิน (อัปเดตชื่อ หรือ เปลี่ยนรหัสผ่าน)
-app.put('/api/admins/:id', async (req, res) => {
+// API 5: สำหรับแก้ไขโปรไฟล์แอดมิน (อัปเดตชื่อ หรือ เปลี่ยนรหัสผ่าน) แก้ได้เฉพาะบัญชีของตัวเอง
+app.put('/api/admins/:id', requireAdmin, async (req, res) => {
     try {
         const id = int(req.params.id);
         const fullName = text(req.body.full_name);
         const password = String(req.body.password ?? '');
         if (!id) return res.status(404).json({ message: "ไม่พบข้อมูลที่ต้องการแก้ไข" });
+        if (id !== req.admin.id) return res.status(403).json({ message: 'แก้ไขได้เฉพาะโปรไฟล์ของตัวเอง' });
 
         let result;
         if (password.trim() !== '') {
@@ -239,7 +281,7 @@ app.get('/api/severity-levels', async (req, res) => {
 // 📝 ระบบรายงานอุบัติเหตุ
 // ========================================
 
-// ข้อมูลรายงานพร้อมชื่อหน่วยงาน ระดับความรุนแรง ผู้รับเรื่อง และรายชื่อไฟล์รูป
+// ข้อมูลรายงานพร้อมชื่อหน่วยงาน ระดับความรุนแรง และรายชื่อไฟล์รูป
 const REPORT_SELECT = `
     SELECT r.id, r.reporter_name, r.reporter_type, r.student_id, r.student_year, r.position,
            CASE WHEN r.reporter_type = 'student'
@@ -248,13 +290,11 @@ const REPORT_SELECT = `
            r.department_id, d.name AS department_name, d.group_name AS department_group, r.major,
            r.incident_date, r.location, r.risk_category, r.description,
            r.severity_level, s.name AS severity_name,
-           r.status, r.handled_by, a.full_name AS handled_by_name, a.username AS handled_by_username,
            r.created_at,
            COALESCE((SELECT json_agg(i.file_name ORDER BY i.id) FROM report_images i WHERE i.report_id = r.id), '[]'::json) AS images
     FROM reports r
     JOIN departments d ON d.id = r.department_id
-    JOIN severity_levels s ON s.level = r.severity_level
-    LEFT JOIN admins a ON a.id = r.handled_by`;
+    JOIN severity_levels s ON s.level = r.severity_level`;
 
 const findReport = async (id) => {
     const result = await pool.query(`${REPORT_SELECT} WHERE r.id = $1`, [id]);
@@ -296,8 +336,10 @@ const REPORT_COLUMNS = [
     'incident_date', 'location', 'risk_category', 'description', 'severity_level',
 ];
 
+// ทุก API ของรายงาน ยกเว้นการส่งฟอร์มแจ้งเหตุ ต้องเข้าสู่ระบบเป็นผู้ดูแลระบบก่อน
+
 // 1. API ดึงข้อมูลทั้งหมด
-app.get('/api/reports', async (req, res) => {
+app.get('/api/reports', requireAdmin, async (req, res) => {
     try {
         const result = await pool.query(`${REPORT_SELECT} ORDER BY r.created_at DESC, r.id DESC`);
         res.json(result.rows);
@@ -307,7 +349,7 @@ app.get('/api/reports', async (req, res) => {
 });
 
 // 1.5 API ดึงรายงานรายการเดียว
-app.get('/api/reports/:id', async (req, res) => {
+app.get('/api/reports/:id', requireAdmin, async (req, res) => {
     try {
         const id = int(req.params.id);
         const report = id ? await findReport(id) : null;
@@ -318,7 +360,7 @@ app.get('/api/reports/:id', async (req, res) => {
     }
 });
 
-// 2. API สร้างข้อมูลใหม่ (พร้อมอัปโหลดรูปสูงสุด 5 รูป)
+// 2. API สร้างข้อมูลใหม่ (พร้อมอัปโหลดรูปสูงสุด 5 รูป) ไม่ต้องเข้าสู่ระบบ เพราะเป็นฟอร์มแจ้งเหตุสาธารณะ
 app.post('/api/reports', upload.array('images', 5), async (req, res) => {
     const uploaded = (req.files || []).map((file) => file.filename);
     const { data, error } = readReportForm(req.body);
@@ -352,7 +394,7 @@ app.post('/api/reports', upload.array('images', 5), async (req, res) => {
 });
 
 // 3. API สำหรับลบข้อมูล (แถวใน report_images ถูกลบตามอัตโนมัติด้วย ON DELETE CASCADE)
-app.delete('/api/reports/:id', async (req, res) => {
+app.delete('/api/reports/:id', requireAdmin, async (req, res) => {
     try {
         const id = int(req.params.id);
         if (!id) return res.status(404).json({ message: "ไม่พบข้อมูลที่ต้องการลบ" });
@@ -371,7 +413,8 @@ app.delete('/api/reports/:id', async (req, res) => {
 });
 
 // 4. API สำหรับแก้ไข/อัปเดตข้อมูล (ถ้าอัปโหลดรูปใหม่ รูปเดิมจะถูกแทนที่และลบไฟล์ทิ้ง)
-app.put('/api/reports/:id', upload.array('images', 5), async (req, res) => {
+// ตรวจการเข้าสู่ระบบก่อนรับไฟล์ จะได้ไม่มีไฟล์ค้างจากคำขอที่ไม่ได้รับอนุญาต
+app.put('/api/reports/:id', requireAdmin, upload.array('images', 5), async (req, res) => {
     const uploaded = (req.files || []).map((file) => file.filename);
     const id = int(req.params.id);
     const { data, error } = readReportForm(req.body);
@@ -412,28 +455,6 @@ app.put('/api/reports/:id', upload.array('images', 5), async (req, res) => {
         sendError(res, err, 'เกิดข้อผิดพลาดในการแก้ไขข้อมูล');
     } finally {
         client?.release();
-    }
-});
-
-// 5. API เปลี่ยนสถานะรายงาน: แอดมินที่กดรับเรื่องจะถูกบันทึกเป็นผู้รับผิดชอบ (handled_by)
-app.patch('/api/reports/:id/status', async (req, res) => {
-    try {
-        const id = int(req.params.id);
-        const status = text(req.body.status);
-        const adminId = int(req.body.admin_id);
-        if (!id) return res.status(404).json({ error: 'ไม่พบรายงานนี้' });
-        if (!REPORT_STATUSES.includes(status)) return res.status(400).json({ error: 'สถานะไม่ถูกต้อง' });
-        if (status !== 'รอดำเนินการ' && !adminId) {
-            return res.status(400).json({ error: 'ต้องเข้าสู่ระบบในฐานะผู้ดูแลระบบก่อนรับเรื่อง' });
-        }
-
-        // กลับเป็น "รอดำเนินการ" = ยังไม่มีผู้รับเรื่อง
-        const handledBy = status === 'รอดำเนินการ' ? null : adminId;
-        const updated = await pool.query('UPDATE reports SET status = $1, handled_by = $2 WHERE id = $3', [status, handledBy, id]);
-        if (updated.rowCount === 0) return res.status(404).json({ error: 'ไม่พบรายงานนี้' });
-        res.json(await findReport(id));
-    } catch (err) {
-        sendError(res, err, 'อัปเดตสถานะไม่สำเร็จ');
     }
 });
 

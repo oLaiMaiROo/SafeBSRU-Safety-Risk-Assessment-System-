@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, UserPlus, Lock, User, CheckCircle2, ShieldAlert } from 'lucide-react';
+import { authFetch } from '../utils/api';
 
 const AddAdmin = () => {
   const navigate = useNavigate();
@@ -26,7 +27,7 @@ const AddAdmin = () => {
     setMessage({ text: 'กำลังสร้างบัญชี...', type: 'info' });
 
     try {
-      const response = await fetch('http://localhost:5000/api/admins', {
+      const response = await authFetch('/api/admins', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData)

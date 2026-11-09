@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, User, Lock, Save, ShieldCheck, CheckCircle2, KeyRound, X, ArrowRight, Eye, EyeOff } from 'lucide-react';
+import { API_URL, authFetch } from '../utils/api';
 
 const Profile = () => {
   const navigate = useNavigate();
@@ -43,10 +44,10 @@ const Profile = () => {
     setProfileMsg({ text: 'กำลังบันทึกข้อมูล...', type: 'info' });
 
     try {
-      const response = await fetch(`http://localhost:5000/api/admins/${adminData.id}`, {
+      const response = await authFetch(`/api/admins/${adminData.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ full_name: fullName }) 
+        body: JSON.stringify({ full_name: fullName })
       });
 
       const data = await response.json();
@@ -72,7 +73,7 @@ const Profile = () => {
     setPasswordMsg({ text: 'กำลังตรวจสอบ...', type: 'info' });
 
     try {
-      const res = await fetch('http://localhost:5000/api/login', {
+      const res = await fetch(`${API_URL}/api/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: adminData.username, password: currentPassword })
@@ -104,7 +105,7 @@ const Profile = () => {
     setPasswordMsg({ text: 'กำลังบันทึกรหัสผ่านใหม่...', type: 'info' });
 
     try {
-      const response = await fetch(`http://localhost:5000/api/admins/${adminData.id}`, {
+      const response = await authFetch(`/api/admins/${adminData.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ full_name: fullName, password: newPassword })

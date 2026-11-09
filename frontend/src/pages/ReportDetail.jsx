@@ -1,12 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, User, MapPin, AlertCircle, CalendarClock, ShieldAlert, Edit, FileText, X, UserCheck } from 'lucide-react';
+import { ArrowLeft, User, MapPin, AlertCircle, CalendarClock, ShieldAlert, Edit, FileText, X } from 'lucide-react';
 import { SeverityBadge } from '../components/Severity';
-import { StatusBadge } from '../components/ReportStatus';
 import { getSeverity } from '../utils/severity';
-import { REPORT_STATUSES } from '../utils/reportStatus';
-import { API_URL, imageUrl, readApiError } from '../utils/api';
+import { authFetch, imageUrl } from '../utils/api';
 import { formatThaiDate } from '../utils/date';
 
 const ReportDetail = () => {
@@ -17,13 +15,9 @@ const ReportDetail = () => {
 
   const [selectedImage, setSelectedImage] = useState(null);
 
-  // การเปลี่ยนสถานะ: แอดมินที่กดบันทึกจะถูกบันทึกเป็นผู้รับเรื่อง
-  const [statusDraft, setStatusDraft] = useState('');
-  const [savingStatus, setSavingStatus] = useState(false);
-  const [statusMsg, setStatusMsg] = useState(null);
 
   useEffect(() => {
-    fetch(`${API_URL}/api/reports/${id}`)
+    authFetch(`/api/reports/${id}`)
       .then(res => {
         if (res.status === 404) throw new Error('notfound');
         if (!res.ok) throw new Error('error');
@@ -31,7 +25,6 @@ const ReportDetail = () => {
       })
       .then(data => {
         setReport(data);
-        setStatusDraft(data.status);
         setLoadState('ready');
       })
       .catch(err => {
@@ -50,30 +43,8 @@ const ReportDetail = () => {
     window.print();
   };
 
-  const handleStatusSave = async () => {
-    setSavingStatus(true);
-    setStatusMsg(null);
-    try {
-      const adminUser = JSON.parse(sessionStorage.getItem('adminUser') || '{}');
-      const response = await fetch(`${API_URL}/api/reports/${report.id}/status`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: statusDraft, admin_id: adminUser.id })
-      });
-      if (!response.ok) throw new Error(await readApiError(response, 'อัปเดตสถานะไม่สำเร็จ'));
-      const updated = await response.json();
-      setReport(updated);
-      setStatusDraft(updated.status);
-      setStatusMsg({ type: 'success', text: 'อัปเดตสถานะแล้ว' });
-    } catch (err) {
-      setStatusMsg({ type: 'error', text: err.message === 'Failed to fetch' ? 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้' : err.message });
-    } finally {
-      setSavingStatus(false);
-    }
-  };
 
   const severity = getSeverity(report.severity_level);
-  const handlerName = report.handled_by_name || report.handled_by_username;
 
   return (
     <div style={{ minHeight: '100vh', backgroundColor: '#f8fafc', padding: '40px 20px', position: 'relative', overflow: 'hidden' }}>
@@ -132,29 +103,6 @@ const ReportDetail = () => {
             </div>
           </div>
 
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px', flexWrap: 'wrap', padding: '14px 18px', borderRadius: '12px', border: '1px solid #e2e8f0', backgroundColor: '#f8fafc', marginBottom: '25px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', fontSize: '14px', color: '#475569' }}>
-              <span style={{ fontWeight: 600 }}>สถานะ</span>
-              <StatusBadge status={report.status} />
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                <UserCheck size={16} color="#64748b" /> <span style={{ whiteSpace: 'nowrap' }}>ผู้รับเรื่อง:</span> <strong style={{ color: '#0f172a' }}>{handlerName || 'ยังไม่มี'}</strong>
-              </span>
-            </div>
-            <div className="no-print" style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-              <label htmlFor="status-select" style={{ fontSize: '13px', color: '#64748b' }}>เปลี่ยนสถานะ</label>
-              <select id="status-select" value={statusDraft} onChange={(e) => { setStatusDraft(e.target.value); setStatusMsg(null); }} style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '14px', backgroundColor: 'white', color: '#1e293b' }}>
-                {REPORT_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
-              <button onClick={handleStatusSave} disabled={savingStatus || statusDraft === report.status} style={{ padding: '8px 14px', borderRadius: '8px', border: 'none', fontSize: '14px', fontWeight: 600, color: 'white', backgroundColor: '#7e22ce', cursor: savingStatus || statusDraft === report.status ? 'not-allowed' : 'pointer', opacity: savingStatus || statusDraft === report.status ? 0.5 : 1 }}>
-                {savingStatus ? 'กำลังบันทึก...' : 'บันทึกสถานะ'}
-              </button>
-            </div>
-            {statusMsg && (
-              <div className="no-print" role="status" style={{ flexBasis: '100%', fontSize: '13px', color: statusMsg.type === 'success' ? '#047857' : '#b91c1c' }}>
-                {statusMsg.text}
-              </div>
-            )}
-          </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '20px', marginBottom: '30px' }}>
             

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Users, ShieldCheck, Circle, AlertCircle } from 'lucide-react';
+import { authFetch } from '../utils/api';
 
 const AdminList = () => {
   const navigate = useNavigate();
@@ -22,7 +23,7 @@ const AdminList = () => {
 
   const fetchAdmins = async () => {
     try {
-      const response = await fetch('http://localhost:5000/api/admins');
+      const response = await authFetch('/api/admins');
       const data = await response.json();
       
       // ดักจับ Error เผื่อลืมรัน SQL หรือลืมรีสตาร์ทเซิร์ฟเวอร์

@@ -16,12 +16,9 @@ A comprehensive web-based platform designed for monitoring, reporting, and evalu
 
     Reports saved under the old 3-level scale were migrated to Level 1 (low), Level 2 (warning) and Level 3 (critical).
 
-*   **📋 Case Handling**
-    Each report has a status (รอดำเนินการ → กำลังดำเนินการ → เสร็จสิ้น). The administrator who changes the status is recorded as the person handling the case.
-
 *   **🔍 Evidence Data Management & Filters**
     *   **In-depth Search:** Search incident history using reporter ID, full name, or filter by specific faculty and department.
-    *   **Status Filtering:** Filter by exact incident dates, severity levels or case status. Includes a selection system to manage multiple records simultaneously.
+    *   **Status Filtering:** Filter by exact incident dates or severity levels. Includes a selection system to manage multiple records simultaneously.
 
 *   **📄 Export System & Reporting**
     *   Export surveillance lists and statistics as **Excel (.csv)** files, fully formatted through data cleansing and ready for further analysis.
@@ -31,7 +28,7 @@ A comprehensive web-based platform designed for monitoring, reporting, and evalu
     An intuitive form supporting incident reports from both students and university personnel. It allows users to attach up to 5 photographic evidence files of the scene. Includes a Data Confirmation popup before database submission to minimize human error.
 
 *   **🔐 Admin & Security Controls**
-    *   **STATUS: ADMIN** - Restricts data management, record deletion, and in-depth detail access exclusively to verified administrators.
+    *   **STATUS: ADMIN** - Restricts data management, record deletion, and in-depth detail access exclusively to verified administrators. After login the server issues a signed token (JWT, valid for 8 hours) that every admin API request must carry; the public incident form needs no login.
     *   **Account Security:** Features a robust administrator profile management system requiring current password verification before allowing credential updates, effectively preventing unauthorized access. Passwords are stored as bcrypt hashes (PostgreSQL `pgcrypto`).
 
 ## 🗄️ Database
@@ -41,10 +38,10 @@ PostgreSQL database `safety_db` with 5 tables: `reports` (center), `departments`
 ## ▶️ Running locally
 
 1. Install PostgreSQL and Node.js, then run `npm install` in `backend` and in `frontend`.
-2. Copy `backend/.env.example` to `backend/.env` and fill in your PostgreSQL password.
+2. Copy `backend/.env.example` to `backend/.env`, fill in your PostgreSQL password and set `JWT_SECRET` to a long random string.
 3. Set up the database, in `backend`:
    * **New computer (empty database):** `node setup-db.js`, then create the first admin with `node create-admin.js <username> <password> "<full name>"`
-   * **Database created before November 2026:** back up, then run `node migrate.js migrations/001_relations_and_cleanup.sql` once
+   * **Database created before November 2026:** back up, then run each file in `backend/migrations/` once, in order (`node migrate.js migrations/001_relations_and_cleanup.sql`, then `002_remove_status.sql`)
 4. Start the backend: `cd backend && npm start` (http://localhost:5000)
 5. Start the frontend: `cd frontend && npm run dev` (http://localhost:5173)
 

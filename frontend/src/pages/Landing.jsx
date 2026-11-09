@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowRight, Activity, Lock, User as UserIcon, X } from 'lucide-react';
 import AeroShards from './AeroShards';
+import { API_URL, saveAdminSession } from '../utils/api';
 
 const Landing = () => {
   const navigate = useNavigate();
@@ -36,7 +37,7 @@ const Landing = () => {
     setLoginError('');
 
     try {
-      const response = await fetch('http://localhost:5000/api/login', {
+      const response = await fetch(`${API_URL}/api/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -47,9 +48,8 @@ const Landing = () => {
       const data = await response.json();
 
       if (response.ok && data.success) {
-        // บันทึกสถานะและข้อมูลของแอดมินลง sessionStorage
-        sessionStorage.setItem('isAdmin', 'true');
-        sessionStorage.setItem('adminUser', JSON.stringify(data.admin));
+        // บันทึกสถานะ ข้อมูลแอดมิน และ token สำหรับเรียก API ลง sessionStorage
+        saveAdminSession(data);
         
         setShowLogin(false);
         handleNavigate('/dashboard');

@@ -4,9 +4,8 @@ import { useNavigate } from 'react-router-dom';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
 import { Plus, FileText, ShieldAlert, FileSearch, TrendingUp, Search, LogOut, User, UserPlus, Users, Download, CalendarDays } from 'lucide-react';
 import { SeverityBadge, SeverityDot } from '../components/Severity';
-import { StatusBadge } from '../components/ReportStatus';
 import { SEVERITY_LEVELS, UNKNOWN_SEVERITY, getSeverity } from '../utils/severity';
-import { API_URL } from '../utils/api';
+import { authFetch, clearAdminSession } from '../utils/api';
 import { formatThaiDate, parseDateOnly } from '../utils/date';
 
 const AnimatedCounter = ({ from = 0, to }) => {
@@ -109,7 +108,7 @@ const Dashboard = () => {
   }, []);
 
   useEffect(() => {
-    fetch(`${API_URL}/api/reports`)
+    authFetch('/api/reports')
       .then(res => res.json())
       .then(data => {
         setReports(Array.isArray(data) ? data : []);
@@ -122,17 +121,11 @@ const Dashboard = () => {
   }, []);
 
   const handleLogout = async () => {
-    if (adminData.id) {
-      try {
-        await fetch(`${API_URL}/api/logout`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: adminData.id })
-        });
-      } catch (err) { console.error("Error setting offline status:", err); }
-    }
-    sessionStorage.removeItem('isAdmin');
-    sessionStorage.removeItem('adminUser');
+    try {
+      // เซิร์ฟเวอร์รู้ว่าใครออกจากระบบจาก token ที่แนบไป
+      await authFetch('/api/logout', { method: 'POST' });
+    } catch (err) { console.error("Error setting offline status:", err); }
+    clearAdminSession();
     navigate('/');
   };
 
@@ -173,7 +166,6 @@ const Dashboard = () => {
   const timeLabel = timeFilter === 'all' ? 'ทั้งหมด' : timeFilter === '1m' ? '1 เดือนล่าสุด' : timeFilter === '3m' ? '3 เดือนล่าสุด' : '6 เดือนล่าสุด';
 
   const totalReports = filteredReports.length;
-  const pendingCount = filteredReports.filter(r => r.status === 'รอดำเนินการ').length;
   // นับจำนวนตามระดับความรุนแรง 1-4
   const severityStats = SEVERITY_LEVELS.map(s => ({
     ...s,
@@ -378,7 +370,6 @@ const Dashboard = () => {
             <div style={{ fontSize: '38px', fontWeight: '700', color: '#0f172a' }}>
               <AnimatedCounter to={totalReports} /> <span style={{fontSize:'16px', color:'#94a3b8', fontWeight:'500'}}>รายการ</span>
             </div>
-            <div style={{ fontSize: '13px', color: '#64748b', marginTop: '6px' }}>รอดำเนินการ {pendingCount} รายการ</div>
           </TiltCard>
           {severityStats.map(s => (
             <TiltCard key={s.level} style={{ ...cardStyle, borderTop: `4px solid ${s.color}` }}>
@@ -472,7 +463,6 @@ const Dashboard = () => {
                   <th style={{ padding: '12px 8px' }}>สถานที่</th>
                   <th style={{ padding: '12px 8px' }}>ลักษณะอุบัติเหตุ</th>
                   <th style={{ padding: '12px 8px' }}>ความรุนแรง</th>
-                  <th style={{ padding: '12px 8px' }}>สถานะ</th>
                   <th className="no-print" style={{ padding: '12px 8px', textAlign: 'center' }}>แอ็กชัน</th>
                 </tr>
               </thead>
@@ -495,9 +485,6 @@ const Dashboard = () => {
                       <td style={{ padding: '14px 8px', whiteSpace: 'nowrap' }}>
                         <SeverityBadge value={report.severity_level} />
                       </td>
-                      <td style={{ padding: '14px 8px', whiteSpace: 'nowrap' }}>
-                        <StatusBadge status={report.status} size="sm" />
-                      </td>
                       <td className="no-print" style={{ padding: '14px 8px', textAlign: 'center' }}>
                         <button 
                           onClick={() => navigate(`/report-detail/${report.id}`)}
@@ -509,7 +496,7 @@ const Dashboard = () => {
                     </tr>
                   );
                 }) : (
-                  <tr><td colSpan="7" style={{ textAlign: 'center', padding: '30px', color: '#94a3b8' }}>ไม่มีรายการแจ้งเหตุในช่วงเวลานี้</td></tr>
+                  <tr><td colSpan="6" style={{ textAlign: 'center', padding: '30px', color: '#94a3b8' }}>ไม่มีรายการแจ้งเหตุในช่วงเวลานี้</td></tr>
                 )}
               </tbody>
             </table>

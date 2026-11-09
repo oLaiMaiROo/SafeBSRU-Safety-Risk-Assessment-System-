@@ -3,10 +3,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, FileSearch, Trash2, Download, FileText, CheckSquare, Filter, User, Building, Hash } from 'lucide-react';
 import { SeverityBadge } from '../components/Severity';
-import { StatusBadge } from '../components/ReportStatus';
 import { SEVERITY_LEVELS, getSeverityLabel } from '../utils/severity';
-import { REPORT_STATUSES } from '../utils/reportStatus';
-import { API_URL, readApiError } from '../utils/api';
+import { authFetch, readApiError } from '../utils/api';
 import { formatThaiDate } from '../utils/date';
 import { useDepartments } from '../utils/useDepartments';
 
@@ -20,7 +18,6 @@ const ReportList = () => {
   const [filterDepartment, setFilterDepartment] = useState(''); // '' | 'group:<ชื่อกลุ่ม>' | '<department id>'
   const [filterDate, setFilterDate] = useState('');
   const [filterSeverity, setFilterSeverity] = useState('');
-  const [filterStatus, setFilterStatus] = useState('');
   
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10; 
@@ -29,7 +26,7 @@ const ReportList = () => {
   const [printMode, setPrintMode] = useState('all');
 
   useEffect(() => {
-    fetch(`${API_URL}/api/reports`)
+    authFetch('/api/reports')
       .then(res => res.json())
       .then(data => setReports(Array.isArray(data) ? data : []))
       .catch(err => console.error('Error:', err));
@@ -47,9 +44,8 @@ const ReportList = () => {
     const matchDate = !filterDate || report.incident_date === filterDate;
 
     const matchSeverity = filterSeverity === '' || report.severity_level === Number(filterSeverity);
-    const matchStatus = filterStatus === '' || report.status === filterStatus;
 
-    return matchName && matchId && matchDepartment && matchDate && matchSeverity && matchStatus;
+    return matchName && matchId && matchDepartment && matchDate && matchSeverity;
   });
 
   const totalPages = Math.ceil(filteredReports.length / itemsPerPage);
@@ -74,7 +70,7 @@ const ReportList = () => {
   const handleDelete = async (id) => {
     if (window.confirm('คุณแน่ใจหรือไม่ว่าต้องการลบรายการแจ้งเหตุนี้? (ลบแล้วกู้คืนไม่ได้นะ)')) {
       try {
-        const response = await fetch(`${API_URL}/api/reports/${id}`, { method: 'DELETE' });
+        const response = await authFetch(`/api/reports/${id}`, { method: 'DELETE' });
         if (response.ok) {
           setReports(prev => prev.filter(report => report.id !== id));
           setSelectedIds(prev => prev.filter(selectedId => selectedId !== id));
@@ -94,7 +90,7 @@ const ReportList = () => {
     csvContent += `วันที่ออกรายงาน: ${new Date().toLocaleDateString('th-TH')}\n\n`;
 
     // 🌟 เปลี่ยนหัวตารางเป็น วันที่เกิดเหตุ
-    csvContent += "ID แจ้งเหตุ,วันที่เกิดเหตุ,เวลาที่แจ้ง(บันทึกเข้าระบบ),รหัสประจำตัว,ชื่อ-นามสกุล,สถานะ/ตำแหน่ง,หน่วยงานสังกัด,สาขา/แผนก,ลักษณะอุบัติเหตุ,ระดับความรุนแรง,สถานที่เกิดเหตุ,รายละเอียด,สถานะการดำเนินการ,ผู้รับเรื่อง\n";
+    csvContent += "ID แจ้งเหตุ,วันที่เกิดเหตุ,เวลาที่แจ้ง(บันทึกเข้าระบบ),รหัสประจำตัว,ชื่อ-นามสกุล,สถานะ/ตำแหน่ง,หน่วยงานสังกัด,สาขา/แผนก,ลักษณะอุบัติเหตุ,ระดับความรุนแรง,สถานที่เกิดเหตุ,รายละเอียด\n";
 
     dataList.forEach(r => {
       const dateStr = formatThaiDate(r.incident_date);
@@ -106,7 +102,7 @@ const ReportList = () => {
 
       const cleanSeverity = cleanStr(getSeverityLabel(r.severity_level));
 
-      csvContent += `${r.id},${dateStr},${timeStr},${cleanStr(r.student_id)},${cleanStr(r.reporter_name)},${cleanStr(r.reporter_role)},${cleanStr(r.department_name)},${cleanStr(r.major)},${cleanStr(r.risk_category)},${cleanSeverity},${cleanStr(r.location)},${cleanStr(r.description)},${cleanStr(r.status)},${cleanStr(r.handled_by_name || r.handled_by_username)}\n`;
+      csvContent += `${r.id},${dateStr},${timeStr},${cleanStr(r.student_id)},${cleanStr(r.reporter_name)},${cleanStr(r.reporter_role)},${cleanStr(r.department_name)},${cleanStr(r.major)},${cleanStr(r.risk_category)},${cleanSeverity},${cleanStr(r.location)},${cleanStr(r.description)}\n`;
     });
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -203,13 +199,6 @@ const ReportList = () => {
               </select>
             </div>
 
-            <div>
-              <label style={filterLabelStyle}>สถานะการดำเนินการ</label>
-              <select value={filterStatus} onChange={(e) => {setFilterStatus(e.target.value); setCurrentPage(1);}} style={{...filterInputStyle, paddingLeft: '12px', backgroundColor: 'white'}}>
-                <option value="">ทุกสถานะ</option>
-                {REPORT_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
-            </div>
 
           </div>
         </div>
@@ -230,7 +219,6 @@ const ReportList = () => {
                   <th style={{ padding: '15px' }}>สถานที่</th>
                   <th style={{ padding: '15px' }}>ลักษณะเหตุ</th>
                   <th style={{ padding: '15px', textAlign: 'center' }}>ระดับความรุนแรง</th>
-                  <th style={{ padding: '15px', textAlign: 'center' }}>สถานะ</th>
                   <th style={{ padding: '15px', textAlign: 'center' }}>แอ็กชัน</th>
                 </tr>
               </thead>
@@ -263,12 +251,6 @@ const ReportList = () => {
                         <SeverityBadge value={report.severity_level} size="sm" />
                       </td>
 
-                      <td style={{ padding: '15px', textAlign: 'center', whiteSpace: 'nowrap' }}>
-                        <StatusBadge status={report.status} size="sm" />
-                        {(report.handled_by_name || report.handled_by_username) && (
-                          <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>{report.handled_by_name || report.handled_by_username}</div>
-                        )}
-                      </td>
 
                       <td style={{ padding: '15px' }}>
                         <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
@@ -279,7 +261,7 @@ const ReportList = () => {
                     </tr>
                   );
                 }) : (
-                  <tr><td colSpan="10" style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>ไม่พบข้อมูลที่ค้นหา</td></tr>
+                  <tr><td colSpan="9" style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>ไม่พบข้อมูลที่ค้นหา</td></tr>
                 )}
               </tbody>
             </table>
@@ -327,7 +309,6 @@ const ReportList = () => {
               <th>สถานที่</th>
               <th>ลักษณะอุบัติเหตุ</th>
               <th>ระดับความรุนแรง</th>
-              <th>สถานะ</th>
             </tr>
           </thead>
           <tbody>
@@ -342,7 +323,6 @@ const ReportList = () => {
                   <td>{report.location}</td>
                   <td>{report.risk_category}</td>
                   <td>{getSeverityLabel(report.severity_level)}</td>
-                  <td>{report.status}{(report.handled_by_name || report.handled_by_username) && <><br/><span style={{fontSize:'10px', color:'#666'}}>{report.handled_by_name || report.handled_by_username}</span></>}</td>
                 </tr>
               );
             })}

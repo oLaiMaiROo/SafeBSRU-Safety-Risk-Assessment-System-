@@ -7,3 +7,4 @@
 | ไฟล์ | สิ่งที่ทำ |
 |---|---|
 | `001_relations_and_cleanup.sql` | เพิ่มตาราง `departments`, `severity_levels`, `report_images` และ foreign key ของ `reports`, เพิ่ม `incident_date` และ `handled_by`, แยกข้อมูลผู้แจ้ง, เข้ารหัสรหัสผ่านแอดมินด้วย bcrypt, ลบคอลัมน์เดิมที่ย้ายข้อมูลแล้ว |
+| `002_remove_status.sql` | ลบ `reports.status` และ `reports.handled_by` (ระบบสถานะและผู้รับเรื่องที่ไม่ได้ใช้งาน) |
