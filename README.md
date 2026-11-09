@@ -36,15 +36,17 @@ A comprehensive web-based platform designed for monitoring, reporting, and evalu
 
 ## 🗄️ Database
 
-PostgreSQL database `safety_db` with 5 tables: `reports` (center), `departments`, `severity_levels`, `admins` and `report_images`. See the ER diagram in [`docs/er-diagram.png`](docs/er-diagram.png) and the migration notes in [`backend/migrations/README.md`](backend/migrations/README.md).
+PostgreSQL database `safety_db` with 5 tables: `reports` (center), `departments`, `severity_levels`, `admins` and `report_images`. See the ER diagram in [`docs/er-diagram.png`](docs/er-diagram.png) and the database guide (setup, migration, backup and rollback) in [`backend/DATABASE.md`](backend/DATABASE.md).
 
 ## ▶️ Running locally
 
-1. Copy `backend/.env.example` to `backend/.env` and fill in your PostgreSQL password.
-2. On an existing database created before November 2026, back up and then run the migration once (see `backend/migrations/README.md`):
-   `cd backend && node migrate.js migrations/001_relations_and_cleanup.sql`
-3. Start the backend: `cd backend && npm start` (http://localhost:5000)
-4. Start the frontend: `cd frontend && npm run dev` (http://localhost:5173)
+1. Install PostgreSQL and Node.js, then run `npm install` in `backend` and in `frontend`.
+2. Copy `backend/.env.example` to `backend/.env` and fill in your PostgreSQL password.
+3. Set up the database, in `backend`:
+   * **New computer (empty database):** `node setup-db.js`, then create the first admin with `node create-admin.js <username> <password> "<full name>"`
+   * **Database created before November 2026:** back up, then run `node migrate.js migrations/001_relations_and_cleanup.sql` once
+4. Start the backend: `cd backend && npm start` (http://localhost:5000)
+5. Start the frontend: `cd frontend && npm run dev` (http://localhost:5173)
 
 ---
 *Developed for Bansomdejchaopraya Rajabhat University (BSRU)*
