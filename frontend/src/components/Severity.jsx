@@ -1,4 +1,4 @@
-import { SEVERITY_LEVELS, getSeverity, getSeverityLabel } from '../utils/severity';
+import { SEVERITY_LEVELS, getSeverity } from '../utils/severity';
 import './severity.css';
 
 // จุดสีแบน ๆ แทนอีโมจิ 🟢🟡🔴
@@ -23,7 +23,7 @@ export const SeverityBadge = ({ value, size = 'md' }) => {
       backgroundColor: s.bg, color: s.text, whiteSpace: 'nowrap', ...BADGE_SIZES[size],
     }}>
       <SeverityDot color={s.color} size={8} />
-      {getSeverityLabel(value)}
+      {s.label}
     </span>
   );
 };
@@ -41,7 +41,7 @@ export const SeverityPicker = ({ name, value, onChange }) => {
             className="severity-option"
             style={checked ? { borderColor: s.color, backgroundColor: s.bg, boxShadow: `0 0 0 1px ${s.color}` } : undefined}
           >
-            <input type="radio" name={name} value={s.value} checked={checked} onChange={onChange} />
+            <input type="radio" name={name} value={s.level} checked={checked} onChange={onChange} />
             <span className="severity-option-title" style={{ color: checked ? s.text : '#1e293b' }}>
               <SeverityDot color={s.color} /> ระดับ {s.level} · {s.name}
             </span>

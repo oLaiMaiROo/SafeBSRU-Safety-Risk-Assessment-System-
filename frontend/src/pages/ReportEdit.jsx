@@ -1,50 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ShieldAlert, ArrowLeft, Save, CheckCircle2, ImagePlus, X, User, MapPin, GraduationCap, Briefcase } from 'lucide-react';
 import { SeverityPicker } from '../components/Severity';
-import { DEFAULT_SEVERITY_VALUE, normalizeSeverityValue } from '../utils/severity';
+import { DEFAULT_SEVERITY_LEVEL } from '../utils/severity';
+import { API_URL, imageUrl, readApiError } from '../utils/api';
+import { todayISO } from '../utils/date';
+import { useDepartments, STUDENT_DEPARTMENT_GROUP } from '../utils/useDepartments';
 
-const bsruDepartments = [
-  {
-    group: "คณะและวิทยาลัย",
-    items: [
-      "คณะวิทยาศาสตร์และเทคโนโลยี", "คณะครุศาสตร์", "คณะมนุษยศาสตร์และสังคมศาสตร์", 
-      "คณะวิทยาการจัดการ", "คณะวิศวกรรมศาสตร์และเทคโนโลยีอุตสาหกรรม", 
-      "วิทยาลัยการดนตรี", "คณะสหเวชศาสตร์", "คณะพยาบาลศาสตร์"
-    ]
-  },
-  {
-    group: "สำนักงานอธิการบดี",
-    items: [
-      "สำนักงานอธิการบดี กองบริหารงานบุคคล",
-      "สำนักงานอธิการบดี กองกลาง",
-      "สำนักงานอธิการบดี กองอาคารสถานที่และสิ่งแวดล้อม",
-      "สำนักงานอธิการบดี กองนโยบายและแผน (งานประกันคุณภาพการศึกษา)",
-      "สำนักงานอธิการบดี กองคลัง (งานพัสดุ)"
-    ]
-  },
-  {
-    group: "สำนักและหน่วยงาน",
-    items: [
-      "สำนักส่งเสริมวิชาการและงานทะเบียน", "สำนักวิทยบริการและเทคโนโลยีสารสนเทศ",
-      "สำนักบริหารกิจการนักศึกษา", "สำนักคอมพิวเตอร์", "สำนักประชาสัมพันธ์และสารสนเทศ",
-      "สำนักวิเทศสัมพันธ์และเครือข่ายอาเซียน", "สำนักศิลปะและวัฒนธรรม",
-      "สถาบันวิจัยและพัฒนา", "สำนักงานสภามหาวิทยาลัย", "หน่วยงานตรวจสอบภายใน"
-    ]
-  },
-  {
-    group: "สถาบัน ศูนย์ และสภา",
-    items: [
-      "สถาบันขงจื่อ", "สภาวิชาการ", "สภาคณาจารย์และข้าราชการ",
-      "ศูนย์ส่งเสริมการเรียนรู้และถ่ายทอดนวัตกรรม (PLI BSRU)",
-      "ศูนย์สหกิจศึกษาและการศึกษาเชิงบูรณาการกับการทำงาน (CWIE)",
-      "ศูนย์ประสานงานรับสมัครนักศึกษาต่างชาติ (IACC)",
-      "ศูนย์สร้างสรรค์ภาพลักษณ์ มรภ.บ้านสมเด็จเจ้าพระยา",
-      "อื่นๆ"
-    ]
-  }
-];
+const STUDENT_YEARS = [1, 2, 3, 4, 5, 6, 7, 8];
 
 const ReportEdit = () => {
   const { id } = useParams();
@@ -54,65 +18,58 @@ const ReportEdit = () => {
 
   const [reporterType, setReporterType] = useState('student');
 
+  const today = todayISO();
   const [formData, setFormData] = useState({
-    reporter_name: '', location: '', risk_category: '', 
-    description: '', severity_color: DEFAULT_SEVERITY_VALUE
+    reporter_name: '', incident_date: today, location: '', risk_category: '',
+    description: '', severity_level: DEFAULT_SEVERITY_LEVEL
   });
 
   const [studentData, setStudentData] = useState({ id: '', year: '' });
-  // id ของบุคลากรไม่มีช่องกรอกแล้ว แต่ยังเก็บค่าเดิมไว้ เพื่อไม่ให้ข้อมูลเก่าหายตอนบันทึก
-  const [personnelData, setPersonnelData] = useState({ id: '', position: '' });
+  const [personnelData, setPersonnelData] = useState({ position: '' });
 
-  const [selectedFaculty, setSelectedFaculty] = useState('');
+  const { groups, error: departmentsError } = useDepartments();
+  const studentGroup = groups.find(g => g.group === STUDENT_DEPARTMENT_GROUP);
+  const [departmentId, setDepartmentId] = useState('');
   const [selectedMajor, setSelectedMajor] = useState('');
 
   const [images, setImages] = useState([]);
   const [previewUrls, setPreviewUrls] = useState([]);
   const [existingImages, setExistingImages] = useState([]);
+  const [loadState, setLoadState] = useState('loading'); // loading | ready | notfound | error
 
   // 🌟 ดึงข้อมูลเก่ามาใส่ฟอร์ม
   useEffect(() => {
-    fetch('http://localhost:5000/api/reports')
-      .then(res => res.json())
-      .then(data => {
-        const report = data.find(r => r.id === parseInt(id));
-        if (report) {
-          setFormData({
-            reporter_name: report.reporter_name || '',
-            location: report.location || '',
-            risk_category: report.risk_category || '',
-            description: report.description || '',
-            severity_color: normalizeSeverityValue(report.severity_color)
-          });
-
-          setSelectedFaculty(report.faculty || '');
-          setSelectedMajor(report.major || '');
-
-          // 🌟 เช็คว่าเป็นนักศึกษาหรือบุคลากร
-          const role = report.reporter_role || '';
-          if (role.includes('นักศึกษา')) {
-            setReporterType('student');
-            // สกัดเอาชั้นปีออกมาจากข้อความเก่า (เช่น "นักศึกษาชั้นปี 3" -> "3")
-            const yearMatch = role.match(/ชั้นปี\s*(\d+)/);
-            setStudentData({
-              id: report.student_id || '',
-              year: yearMatch ? yearMatch[1] : ''
-            });
-          } else {
-            setReporterType('personnel');
-            setPersonnelData({
-              id: report.student_id || '',
-              position: role === 'บุคลากร' ? '' : role
-            });
-          }
-
-          if (report.image_path) {
-            setExistingImages(report.image_path.split(','));
-          }
-        }
+    fetch(`${API_URL}/api/reports/${id}`)
+      .then(res => {
+        if (res.status === 404) throw new Error('notfound');
+        if (!res.ok) throw new Error('error');
+        return res.json();
       })
-      .catch(err => console.error('Error fetching:', err));
-  }, [id]);
+      .then(report => {
+        setFormData({
+          reporter_name: report.reporter_name || '',
+          incident_date: report.incident_date || today,
+          location: report.location || '',
+          risk_category: report.risk_category || '',
+          description: report.description || '',
+          severity_level: report.severity_level || DEFAULT_SEVERITY_LEVEL
+        });
+
+        setDepartmentId(String(report.department_id || ''));
+        setSelectedMajor(report.major || '');
+
+        setReporterType(report.reporter_type === 'personnel' ? 'personnel' : 'student');
+        setStudentData({ id: report.student_id || '', year: report.student_year ? String(report.student_year) : '' });
+        setPersonnelData({ position: report.position || '' });
+
+        setExistingImages(report.images || []);
+        setLoadState('ready');
+      })
+      .catch(err => {
+        if (err.message !== 'notfound') console.error('Error fetching:', err);
+        setLoadState(err.message === 'notfound' ? 'notfound' : 'error');
+      });
+  }, [id, today]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -129,7 +86,7 @@ const ReportEdit = () => {
 
   const handleTypeToggle = (type) => {
     setReporterType(type);
-    setSelectedFaculty('');
+    setDepartmentId('');
     setSelectedMajor('');
   };
 
@@ -142,7 +99,8 @@ const ReportEdit = () => {
     setImages(prev => [...prev, ...selectedFiles]);
     const newPreviews = selectedFiles.map(file => URL.createObjectURL(file));
     setPreviewUrls(prev => [...prev, ...newPreviews]);
-    setExistingImages([]); // ถ้ารูปใหม่ถูกเลือก จะเคลียร์รูปเก่าทิ้ง (ให้ทับไปเลย)
+    // รูปเดิมจะถูกซ่อนระหว่างที่มีรูปใหม่ และถูกแทนที่เมื่อกดบันทึก
+    // ถ้าลบรูปใหม่ออกหมด รูปเดิมจะกลับมาแสดง (ตรงกับที่เซิร์ฟเวอร์เก็บไว้)
   };
 
   const removeNewImage = (indexToRemove) => {
@@ -155,22 +113,17 @@ const ReportEdit = () => {
     setIsSubmitting(true);
 
     const submitData = new FormData();
-    
-    // ดึงรหัสตามประเภทผู้แจ้ง
-    const currentId = reporterType === 'student' ? studentData.id : personnelData.id;
-    submitData.append('student_id', currentId || '');
 
-    // ดึงสถานะ/ตำแหน่ง
-    let currentRole = '';
+    submitData.append('reporter_type', reporterType);
     if (reporterType === 'student') {
-        currentRole = studentData.year ? `นักศึกษาชั้นปี ${studentData.year}` : 'นักศึกษา';
+        submitData.append('student_id', studentData.id);
+        submitData.append('student_year', studentData.year);
     } else {
-        currentRole = personnelData.position || 'บุคลากร';
+        submitData.append('position', personnelData.position);
     }
-    submitData.append('reporter_role', currentRole);
 
-    submitData.append('faculty', selectedFaculty || '');
-    submitData.append('major', selectedMajor || '');
+    submitData.append('department_id', departmentId);
+    submitData.append('major', selectedMajor);
 
     Object.keys(formData).forEach(key => {
         submitData.append(key, formData[key]);
@@ -181,16 +134,16 @@ const ReportEdit = () => {
     });
 
     try {
-      const response = await fetch(`http://localhost:5000/api/reports/${id}`, {
+      const response = await fetch(`${API_URL}/api/reports/${id}`, {
         method: 'PUT',
-        body: submitData 
+        body: submitData
       });
 
       if (response.ok) {
         setShowSuccess(true);
         setTimeout(() => navigate(`/report-detail/${id}`), 1500);
       } else {
-        alert('แก้ไขข้อมูลไม่สำเร็จ โปรดลองอีกครั้ง');
+        alert(await readApiError(response, 'แก้ไขข้อมูลไม่สำเร็จ โปรดลองอีกครั้ง'));
         setIsSubmitting(false);
       }
     } catch (error) {
@@ -215,11 +168,15 @@ const ReportEdit = () => {
             <ShieldAlert color="#3b82f6" size={32} />
             <div>
               <h1 style={{ margin: 0, fontSize: '24px', color: '#0f172a' }}>แก้ไขข้อมูลอุบัติเหตุ (ID: {id})</h1>
-              <p style={{ margin: '5px 0 0 0', color: '#64748b', fontSize: '14px' }}>เปลี่ยนแปลงข้อมูลหรือสถานะการแจ้งเหตุ</p>
+              <p style={{ margin: '5px 0 0 0', color: '#64748b', fontSize: '14px' }}>เปลี่ยนแปลงข้อมูลการแจ้งเหตุ (เปลี่ยนสถานะได้ที่หน้ารายละเอียด)</p>
             </div>
           </div>
 
-          {showSuccess ? (
+          {loadState === 'loading' || loadState === 'notfound' || loadState === 'error' ? (
+            <p style={{ textAlign: 'center', padding: '30px 0', color: '#64748b', margin: 0 }}>
+              {loadState === 'loading' ? 'กำลังโหลดข้อมูล...' : loadState === 'notfound' ? `ไม่พบรายงาน ID ${id}` : 'โหลดข้อมูลไม่สำเร็จ โปรดตรวจสอบว่าเซิร์ฟเวอร์ทำงานอยู่'}
+            </p>
+          ) : showSuccess ? (
             <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} style={{ textAlign: 'center', padding: '40px 0' }}>
               <CheckCircle2 size={80} color="#3b82f6" style={{ marginBottom: '20px' }} />
               <h2 style={{ color: '#0f172a', margin: '0 0 10px 0' }}>อัปเดตข้อมูลสำเร็จ!</h2>
@@ -275,17 +232,20 @@ const ReportEdit = () => {
                             </div>
                             <div>
                               <label style={labelStyle}>ชั้นปี</label>
-                              <input type="text" name="year" value={studentData.year} onChange={handleStudentChange} style={inputStyle} />
+                              <select name="year" value={studentData.year} onChange={handleStudentChange} style={inputStyle}>
+                                <option value="">-- ไม่ระบุ --</option>
+                                {STUDENT_YEARS.map(year => <option key={year} value={year}>ชั้นปี {year}</option>)}
+                              </select>
                             </div>
                           </div>
 
                           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px' }}>
                             <div>
                               <label style={labelStyle}>สังกัดคณะ <span style={{color: '#ef4444'}}>*</span></label>
-                              <select required value={selectedFaculty} onChange={(e) => setSelectedFaculty(e.target.value)} style={inputStyle}>
-                                <option value="">-- เลือกคณะ --</option>
-                                {bsruDepartments[0].items.map(item => (
-                                  <option key={item} value={item}>{item}</option>
+                              <select required value={departmentId} onChange={(e) => setDepartmentId(e.target.value)} style={inputStyle}>
+                                <option value="">{departmentsError ? 'โหลดรายชื่อคณะไม่สำเร็จ' : '-- เลือกคณะ --'}</option>
+                                {(studentGroup?.items || []).map(dept => (
+                                  <option key={dept.id} value={dept.id}>{dept.name}</option>
                                 ))}
                               </select>
                             </div>
@@ -307,12 +267,12 @@ const ReportEdit = () => {
                           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px' }}>
                             <div>
                               <label style={labelStyle}>สังกัดคณะ | สำนัก | หน่วยงาน <span style={{color: '#ef4444'}}>*</span></label>
-                              <select required value={selectedFaculty} onChange={(e) => setSelectedFaculty(e.target.value)} style={inputStyle}>
-                                <option value="">-- เลือกหน่วยงานสังกัด --</option>
-                                {bsruDepartments.map((group, idx) => (
-                                  <optgroup key={idx} label={`--- ${group.group} ---`}>
-                                    {group.items.map(item => (
-                                      <option key={item} value={item}>{item}</option>
+                              <select required value={departmentId} onChange={(e) => setDepartmentId(e.target.value)} style={inputStyle}>
+                                <option value="">{departmentsError ? 'โหลดรายชื่อหน่วยงานไม่สำเร็จ' : '-- เลือกหน่วยงานสังกัด --'}</option>
+                                {groups.map(group => (
+                                  <optgroup key={group.group} label={`--- ${group.group} ---`}>
+                                    {group.items.map(dept => (
+                                      <option key={dept.id} value={dept.id}>{dept.name}</option>
                                     ))}
                                   </optgroup>
                                 ))}
@@ -338,9 +298,15 @@ const ReportEdit = () => {
                 </h3>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                  <div>
-                    <label style={labelStyle}>สถานที่เกิดเหตุ <span style={{color: '#ef4444'}}>*</span></label>
-                    <input type="text" name="location" required value={formData.location} onChange={handleChange} style={inputStyle} />
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px' }}>
+                    <div>
+                      <label style={labelStyle}>วันที่เกิดเหตุ <span style={{color: '#ef4444'}}>*</span></label>
+                      <input type="date" name="incident_date" required value={formData.incident_date} onChange={handleChange} max={today} style={inputStyle} />
+                    </div>
+                    <div>
+                      <label style={labelStyle}>สถานที่เกิดเหตุ <span style={{color: '#ef4444'}}>*</span></label>
+                      <input type="text" name="location" required value={formData.location} onChange={handleChange} style={inputStyle} />
+                    </div>
                   </div>
 
                   <div>
@@ -350,7 +316,7 @@ const ReportEdit = () => {
 
                   <div>
                     <span style={labelStyle}>ระดับความรุนแรง <span style={{color: '#ef4444'}}>*</span></span>
-                    <SeverityPicker name="severity_color" value={formData.severity_color} onChange={handleChange} />
+                    <SeverityPicker name="severity_level" value={formData.severity_level} onChange={handleChange} />
                   </div>
 
                   <div>
@@ -362,7 +328,7 @@ const ReportEdit = () => {
                       <div style={{ display: 'flex', gap: '10px', marginBottom: '15px', flexWrap: 'wrap' }}>
                         {existingImages.map((img, index) => (
                           <div key={index} style={{ position: 'relative', width: '80px', height: '80px', borderRadius: '8px', overflow: 'hidden', border: '1px solid #e2e8f0', opacity: '0.8' }}>
-                            <img src={`http://localhost:5000/uploads/${img}`} alt={`รูปเดิม ${index}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            <img src={imageUrl(img)} alt={`รูปเดิม ${index + 1}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                             <div style={{ position: 'absolute', bottom: '0', width: '100%', background: 'rgba(0,0,0,0.5)', color: 'white', fontSize: '10px', textAlign: 'center', padding: '2px' }}>รูปเดิม</div>
                           </div>
                         ))}

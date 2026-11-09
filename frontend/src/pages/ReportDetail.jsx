@@ -1,36 +1,79 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, User, MapPin, AlertCircle, CalendarClock, ShieldAlert, Edit, FileText, X } from 'lucide-react';
+import { ArrowLeft, User, MapPin, AlertCircle, CalendarClock, ShieldAlert, Edit, FileText, X, UserCheck } from 'lucide-react';
 import { SeverityBadge } from '../components/Severity';
+import { StatusBadge } from '../components/ReportStatus';
 import { getSeverity } from '../utils/severity';
+import { REPORT_STATUSES } from '../utils/reportStatus';
+import { API_URL, imageUrl, readApiError } from '../utils/api';
+import { formatThaiDate } from '../utils/date';
 
 const ReportDetail = () => {
-  const { id } = useParams(); 
+  const { id } = useParams();
   const navigate = useNavigate();
   const [report, setReport] = useState(null);
-  
+  const [loadState, setLoadState] = useState('loading'); // loading | ready | notfound | error
+
   const [selectedImage, setSelectedImage] = useState(null);
 
+  // การเปลี่ยนสถานะ: แอดมินที่กดบันทึกจะถูกบันทึกเป็นผู้รับเรื่อง
+  const [statusDraft, setStatusDraft] = useState('');
+  const [savingStatus, setSavingStatus] = useState(false);
+  const [statusMsg, setStatusMsg] = useState(null);
+
   useEffect(() => {
-    fetch('http://localhost:5000/api/reports')
-      .then(res => res.json())
-      .then(data => {
-        const foundReport = data.find(r => r.id === parseInt(id));
-        setReport(foundReport);
+    fetch(`${API_URL}/api/reports/${id}`)
+      .then(res => {
+        if (res.status === 404) throw new Error('notfound');
+        if (!res.ok) throw new Error('error');
+        return res.json();
       })
-      .catch(err => console.error('Error:', err));
+      .then(data => {
+        setReport(data);
+        setStatusDraft(data.status);
+        setLoadState('ready');
+      })
+      .catch(err => {
+        if (err.message !== 'notfound') console.error('Error:', err);
+        setLoadState(err.message === 'notfound' ? 'notfound' : 'error');
+      });
   }, [id]);
 
   if (!report) {
-    return <div style={{ textAlign: 'center', padding: '50px', color: '#64748b' }}>กำลังโหลดข้อมูล... หรือไม่พบข้อมูลนี้</div>;
+    const message = loadState === 'loading' ? 'กำลังโหลดข้อมูล...'
+      : loadState === 'notfound' ? `ไม่พบรายงาน ID ${id}` : 'โหลดข้อมูลไม่สำเร็จ โปรดตรวจสอบว่าเซิร์ฟเวอร์ทำงานอยู่';
+    return <div style={{ textAlign: 'center', padding: '50px', color: '#64748b' }}>{message}</div>;
   }
 
   const handleExportPDF = () => {
     window.print();
   };
 
-  const severity = getSeverity(report.severity_color);
+  const handleStatusSave = async () => {
+    setSavingStatus(true);
+    setStatusMsg(null);
+    try {
+      const adminUser = JSON.parse(sessionStorage.getItem('adminUser') || '{}');
+      const response = await fetch(`${API_URL}/api/reports/${report.id}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: statusDraft, admin_id: adminUser.id })
+      });
+      if (!response.ok) throw new Error(await readApiError(response, 'อัปเดตสถานะไม่สำเร็จ'));
+      const updated = await response.json();
+      setReport(updated);
+      setStatusDraft(updated.status);
+      setStatusMsg({ type: 'success', text: 'อัปเดตสถานะแล้ว' });
+    } catch (err) {
+      setStatusMsg({ type: 'error', text: err.message === 'Failed to fetch' ? 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้' : err.message });
+    } finally {
+      setSavingStatus(false);
+    }
+  };
+
+  const severity = getSeverity(report.severity_level);
+  const handlerName = report.handled_by_name || report.handled_by_username;
 
   return (
     <div style={{ minHeight: '100vh', backgroundColor: '#f8fafc', padding: '40px 20px', position: 'relative', overflow: 'hidden' }}>
@@ -70,25 +113,50 @@ const ReportDetail = () => {
           </div>
         </div>
 
-        <div className="print-container" style={{ backgroundColor: 'rgba(255,255,255,0.9)', padding: '40px', borderRadius: '24px', border: '1px solid #e2e8f0', boxShadow: '0 10px 40px rgba(0,0,0,0.03)', backdropFilter: 'blur(10px)' }}>
+        <div className="print-container" style={{ backgroundColor: 'rgba(255,255,255,0.9)', padding: 'clamp(20px, 5vw, 40px)', borderRadius: '24px', border: '1px solid #e2e8f0', boxShadow: '0 10px 40px rgba(0,0,0,0.03)', backdropFilter: 'blur(10px)' }}>
           
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid #f1f5f9', paddingBottom: '20px', marginBottom: '25px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px', borderBottom: '1px solid #f1f5f9', paddingBottom: '20px', marginBottom: '25px' }}>
             <div>
               <h1 style={{ margin: '0 0 10px 0', fontSize: '24px', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <ShieldAlert color="#7e22ce" size={28} /> รายละเอียดการแจ้งเหตุ (ID: {report.id})
               </h1>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#64748b', fontSize: '14px' }}>
-                <CalendarClock size={16} /> {new Date(report.created_at).toLocaleString('th-TH')}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#64748b', fontSize: '14px', flexWrap: 'wrap' }}>
+                <CalendarClock size={16} /> วันที่เกิดเหตุ {formatThaiDate(report.incident_date, { year: 'numeric', month: 'long', day: 'numeric' })}
+                <span style={{ color: '#cbd5e1' }}>|</span> บันทึกเมื่อ {new Date(report.created_at).toLocaleString('th-TH')}
               </div>
             </div>
-            
+
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '6px', textAlign: 'right', maxWidth: '260px' }}>
-              <SeverityBadge value={report.severity_color} size="lg" />
+              <SeverityBadge value={report.severity_level} size="lg" />
               {severity.description && <span style={{ fontSize: '12px', color: '#64748b', lineHeight: 1.4 }}>{severity.description}</span>}
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '20px', marginBottom: '30px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px', flexWrap: 'wrap', padding: '14px 18px', borderRadius: '12px', border: '1px solid #e2e8f0', backgroundColor: '#f8fafc', marginBottom: '25px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', fontSize: '14px', color: '#475569' }}>
+              <span style={{ fontWeight: 600 }}>สถานะ</span>
+              <StatusBadge status={report.status} />
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                <UserCheck size={16} color="#64748b" /> <span style={{ whiteSpace: 'nowrap' }}>ผู้รับเรื่อง:</span> <strong style={{ color: '#0f172a' }}>{handlerName || 'ยังไม่มี'}</strong>
+              </span>
+            </div>
+            <div className="no-print" style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <label htmlFor="status-select" style={{ fontSize: '13px', color: '#64748b' }}>เปลี่ยนสถานะ</label>
+              <select id="status-select" value={statusDraft} onChange={(e) => { setStatusDraft(e.target.value); setStatusMsg(null); }} style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '14px', backgroundColor: 'white', color: '#1e293b' }}>
+                {REPORT_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+              <button onClick={handleStatusSave} disabled={savingStatus || statusDraft === report.status} style={{ padding: '8px 14px', borderRadius: '8px', border: 'none', fontSize: '14px', fontWeight: 600, color: 'white', backgroundColor: '#7e22ce', cursor: savingStatus || statusDraft === report.status ? 'not-allowed' : 'pointer', opacity: savingStatus || statusDraft === report.status ? 0.5 : 1 }}>
+                {savingStatus ? 'กำลังบันทึก...' : 'บันทึกสถานะ'}
+              </button>
+            </div>
+            {statusMsg && (
+              <div className="no-print" role="status" style={{ flexBasis: '100%', fontSize: '13px', color: statusMsg.type === 'success' ? '#047857' : '#b91c1c' }}>
+                {statusMsg.text}
+              </div>
+            )}
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '20px', marginBottom: '30px' }}>
             
             <div style={{ backgroundColor: '#f8fafc', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
               <div style={{ color: '#64748b', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '15px', borderBottom: '1px solid #e2e8f0', paddingBottom: '8px', fontWeight: '600' }}>
@@ -109,7 +177,7 @@ const ReportDetail = () => {
                 </div>
                 <div>
                   <div style={{ fontSize: '12px', color: '#94a3b8' }}>สังกัด / หน่วยงาน</div>
-                  <div style={{ color: '#0f172a', fontWeight: '500', fontSize: '15px', marginTop: '2px' }}>{report.faculty || '-'}</div>
+                  <div style={{ color: '#0f172a', fontWeight: '500', fontSize: '15px', marginTop: '2px' }}>{report.department_name || '-'}</div>
                 </div>
                 <div style={{ gridColumn: '1 / -1' }}>
                   <div style={{ fontSize: '12px', color: '#94a3b8' }}>สาขา / แผนก</div>
@@ -141,12 +209,12 @@ const ReportDetail = () => {
           <div>
             <div style={{ color: '#64748b', fontSize: '14px', marginBottom: '12px', fontWeight: '600' }}>รูปภาพประกอบ (คลิกเพื่อดูภาพขยาย):</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '15px' }}>
-              {report.image_path ? (
-                report.image_path.split(',').map((imgName, index) => (
-                  <motion.img 
+              {report.images?.length > 0 ? (
+                report.images.map((imgName, index) => (
+                  <motion.img
                     layoutId={`image-${imgName}`}
-                    key={index} 
-                    src={`http://localhost:5000/uploads/${imgName}`} 
+                    key={imgName}
+                    src={imageUrl(imgName)}
                     alt={`ภาพประกอบ ${index+1}`}
                     onClick={() => setSelectedImage(imgName)}
                     whileHover={{ scale: 1.05, boxShadow: '0 10px 15px rgba(0,0,0,0.1)' }}
@@ -186,7 +254,7 @@ const ReportDetail = () => {
 
             <motion.img
               layoutId={`image-${selectedImage}`}
-              src={`http://localhost:5000/uploads/${selectedImage}`}
+              src={imageUrl(selectedImage)}
               alt="ภาพขยาย"
               style={{ maxWidth: '90%', maxHeight: '90%', borderRadius: '16px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)', objectFit: 'contain' }}
               onClick={(e) => e.stopPropagation()} 

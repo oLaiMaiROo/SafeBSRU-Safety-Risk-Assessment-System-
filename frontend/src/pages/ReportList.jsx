@@ -1,25 +1,26 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Search, Calendar, FileSearch, Trash2, Download, FileText, CheckSquare, Filter, User, Building, Hash } from 'lucide-react';
+import { ArrowLeft, FileSearch, Trash2, Download, FileText, CheckSquare, Filter, User, Building, Hash } from 'lucide-react';
 import { SeverityBadge } from '../components/Severity';
-import { SEVERITY_LEVELS, getSeverity, getSeverityLabel } from '../utils/severity';
-
-const bsruFaculties = [
-  "คณะวิทยาศาสตร์และเทคโนโลยี", "คณะครุศาสตร์", "คณะมนุษยศาสตร์และสังคมศาสตร์", 
-  "คณะวิทยาการจัดการ", "คณะวิศวกรรมศาสตร์และเทคโนโลยีอุตสาหกรรม", 
-  "วิทยาลัยการดนตรี", "คณะสหเวชศาสตร์", "คณะพยาบาลศาสตร์", "สำนักงานอธิการบดี"
-];
+import { StatusBadge } from '../components/ReportStatus';
+import { SEVERITY_LEVELS, getSeverityLabel } from '../utils/severity';
+import { REPORT_STATUSES } from '../utils/reportStatus';
+import { API_URL, readApiError } from '../utils/api';
+import { formatThaiDate } from '../utils/date';
+import { useDepartments } from '../utils/useDepartments';
 
 const ReportList = () => {
   const navigate = useNavigate();
   const [reports, setReports] = useState([]);
-  
-  const [searchName, setSearchName] = useState(''); 
-  const [searchId, setSearchId] = useState(''); 
-  const [filterFaculty, setFilterFaculty] = useState(''); 
-  const [filterDate, setFilterDate] = useState(''); 
-  const [filterSeverity, setFilterSeverity] = useState(''); 
+  const { groups } = useDepartments();
+
+  const [searchName, setSearchName] = useState('');
+  const [searchId, setSearchId] = useState('');
+  const [filterDepartment, setFilterDepartment] = useState(''); // '' | 'group:<ชื่อกลุ่ม>' | '<department id>'
+  const [filterDate, setFilterDate] = useState('');
+  const [filterSeverity, setFilterSeverity] = useState('');
+  const [filterStatus, setFilterStatus] = useState('');
   
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10; 
@@ -28,28 +29,27 @@ const ReportList = () => {
   const [printMode, setPrintMode] = useState('all');
 
   useEffect(() => {
-    fetch('http://localhost:5000/api/reports')
+    fetch(`${API_URL}/api/reports`)
       .then(res => res.json())
-      .then(data => setReports(data))
+      .then(data => setReports(Array.isArray(data) ? data : []))
       .catch(err => console.error('Error:', err));
   }, []);
 
   const filteredReports = reports.filter(report => {
     const matchName = (report.reporter_name || '').toLowerCase().includes(searchName.toLowerCase());
     const matchId = (report.student_id || '').toLowerCase().includes(searchId.toLowerCase());
-    const matchFaculty = filterFaculty === '' || (report.faculty || '').includes(filterFaculty);
-    
-    // 🌟 เปลี่ยนมากรองจากวันที่เกิดเหตุ (incident_date)
-    let matchDate = true;
-    if (filterDate) {
-      const targetDate = report.incident_date || report.created_at;
-      const reportDate = new Date(targetDate).toISOString().split('T')[0];
-      matchDate = reportDate === filterDate;
-    }
+    const matchDepartment = filterDepartment === ''
+      || (filterDepartment.startsWith('group:')
+        ? report.department_group === filterDepartment.slice('group:'.length)
+        : report.department_id === Number(filterDepartment));
 
-    const matchSeverity = filterSeverity === '' || getSeverity(report.severity_color).level === Number(filterSeverity);
+    // 🌟 กรองจากวันที่เกิดเหตุ (incident_date เป็นข้อความ YYYY-MM-DD เทียบกันได้ตรง ๆ)
+    const matchDate = !filterDate || report.incident_date === filterDate;
 
-    return matchName && matchId && matchFaculty && matchDate && matchSeverity;
+    const matchSeverity = filterSeverity === '' || report.severity_level === Number(filterSeverity);
+    const matchStatus = filterStatus === '' || report.status === filterStatus;
+
+    return matchName && matchId && matchDepartment && matchDate && matchSeverity && matchStatus;
   });
 
   const totalPages = Math.ceil(filteredReports.length / itemsPerPage);
@@ -74,12 +74,12 @@ const ReportList = () => {
   const handleDelete = async (id) => {
     if (window.confirm('คุณแน่ใจหรือไม่ว่าต้องการลบรายการแจ้งเหตุนี้? (ลบแล้วกู้คืนไม่ได้นะ)')) {
       try {
-        const response = await fetch(`http://localhost:5000/api/reports/${id}`, { method: 'DELETE' });
+        const response = await fetch(`${API_URL}/api/reports/${id}`, { method: 'DELETE' });
         if (response.ok) {
           setReports(prev => prev.filter(report => report.id !== id));
           setSelectedIds(prev => prev.filter(selectedId => selectedId !== id));
         } else {
-          alert('เกิดข้อผิดพลาด: ไม่สามารถลบข้อมูลได้');
+          alert(await readApiError(response, 'เกิดข้อผิดพลาด: ไม่สามารถลบข้อมูลได้'));
         }
       } catch (error) {
         console.error('Error:', error);
@@ -94,21 +94,19 @@ const ReportList = () => {
     csvContent += `วันที่ออกรายงาน: ${new Date().toLocaleDateString('th-TH')}\n\n`;
 
     // 🌟 เปลี่ยนหัวตารางเป็น วันที่เกิดเหตุ
-    csvContent += "ID แจ้งเหตุ,วันที่เกิดเหตุ,เวลาที่แจ้ง(บันทึกเข้าระบบ),รหัสประจำตัว,ชื่อ-นามสกุล,สถานะ/ตำแหน่ง,หน่วยงานสังกัด,สาขา/แผนก,ลักษณะอุบัติเหตุ,ระดับผลกระทบ,สถานที่เกิดเหตุ,รายละเอียด\n";
+    csvContent += "ID แจ้งเหตุ,วันที่เกิดเหตุ,เวลาที่แจ้ง(บันทึกเข้าระบบ),รหัสประจำตัว,ชื่อ-นามสกุล,สถานะ/ตำแหน่ง,หน่วยงานสังกัด,สาขา/แผนก,ลักษณะอุบัติเหตุ,ระดับความรุนแรง,สถานที่เกิดเหตุ,รายละเอียด,สถานะการดำเนินการ,ผู้รับเรื่อง\n";
 
     dataList.forEach(r => {
-      // 🌟 ดึงวันที่จาก incident_date เป็นหลัก
-      const targetDate = r.incident_date || r.created_at;
-      const dateStr = new Date(targetDate).toLocaleDateString('th-TH');
-      
+      const dateStr = formatThaiDate(r.incident_date);
+
       // เวลา ให้ยึดจากเวลาที่กดส่งฟอร์มเข้าระบบ (created_at)
       const timeStr = new Date(r.created_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
 
       const cleanStr = (str) => str ? `"${String(str).replace(/"/g, '""')}"` : '"-"';
 
-      const cleanSeverity = cleanStr(getSeverityLabel(r.severity_color));
+      const cleanSeverity = cleanStr(getSeverityLabel(r.severity_level));
 
-      csvContent += `${r.id},${dateStr},${timeStr},${cleanStr(r.student_id)},${cleanStr(r.reporter_name)},${cleanStr(r.reporter_role)},${cleanStr(r.faculty)},${cleanStr(r.major)},${cleanStr(r.risk_category)},${cleanSeverity},${cleanStr(r.location)},${cleanStr(r.description)}\n`;
+      csvContent += `${r.id},${dateStr},${timeStr},${cleanStr(r.student_id)},${cleanStr(r.reporter_name)},${cleanStr(r.reporter_role)},${cleanStr(r.department_name)},${cleanStr(r.major)},${cleanStr(r.risk_category)},${cleanSeverity},${cleanStr(r.location)},${cleanStr(r.description)},${cleanStr(r.status)},${cleanStr(r.handled_by_name || r.handled_by_username)}\n`;
     });
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -180,9 +178,14 @@ const ReportList = () => {
             <div style={{ position: 'relative' }}>
               <label style={filterLabelStyle}>กรองตามคณะ/หน่วยงาน</label>
               <Building size={16} color="#94a3b8" style={filterIconStyle} />
-              <select value={filterFaculty} onChange={(e) => {setFilterFaculty(e.target.value); setCurrentPage(1);}} style={{...filterInputStyle, appearance: 'none', backgroundColor: '#fff'}}>
+              <select value={filterDepartment} onChange={(e) => {setFilterDepartment(e.target.value); setCurrentPage(1);}} style={{...filterInputStyle, appearance: 'none', backgroundColor: '#fff'}}>
                 <option value="">ทั้งหมด</option>
-                {bsruFaculties.map(fac => <option key={fac} value={fac}>{fac}</option>)}
+                {groups.map(group => (
+                  <optgroup key={group.group} label={group.group}>
+                    <option value={`group:${group.group}`}>ทั้งหมดใน{group.group}</option>
+                    {group.items.map(dept => <option key={dept.id} value={dept.id}>{dept.name}</option>)}
+                  </optgroup>
+                ))}
               </select>
             </div>
 
@@ -197,6 +200,14 @@ const ReportList = () => {
               <select value={filterSeverity} onChange={(e) => {setFilterSeverity(e.target.value); setCurrentPage(1);}} style={{...filterInputStyle, paddingLeft: '12px', backgroundColor: 'white'}}>
                 <option value="">ทุกระดับ (แสดงทั้งหมด)</option>
                 {SEVERITY_LEVELS.map(s => <option key={s.level} value={s.level}>{s.label}</option>)}
+              </select>
+            </div>
+
+            <div>
+              <label style={filterLabelStyle}>สถานะการดำเนินการ</label>
+              <select value={filterStatus} onChange={(e) => {setFilterStatus(e.target.value); setCurrentPage(1);}} style={{...filterInputStyle, paddingLeft: '12px', backgroundColor: 'white'}}>
+                <option value="">ทุกสถานะ</option>
+                {REPORT_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
 
@@ -219,6 +230,7 @@ const ReportList = () => {
                   <th style={{ padding: '15px' }}>สถานที่</th>
                   <th style={{ padding: '15px' }}>ลักษณะเหตุ</th>
                   <th style={{ padding: '15px', textAlign: 'center' }}>ระดับความรุนแรง</th>
+                  <th style={{ padding: '15px', textAlign: 'center' }}>สถานะ</th>
                   <th style={{ padding: '15px', textAlign: 'center' }}>แอ็กชัน</th>
                 </tr>
               </thead>
@@ -231,7 +243,7 @@ const ReportList = () => {
                       </td>
                       <td style={{ padding: '15px', color: '#475569', fontSize: '13px' }}>
                         {/* 🌟 โชว์วันที่เกิดเหตุ */}
-                        {new Date(report.incident_date || report.created_at).toLocaleDateString('th-TH')}
+                        {formatThaiDate(report.incident_date)}
                       </td>
                       <td style={{ padding: '15px', color: '#1e293b', fontSize: '14px', fontWeight: '500' }}>
                         {report.student_id || '-'}
@@ -241,16 +253,23 @@ const ReportList = () => {
                         <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px', fontWeight: 'normal' }}>{report.reporter_role || '-'}</div>
                       </td>
                       <td style={{ padding: '15px', color: '#475569', fontSize: '13px' }}>
-                        <div style={{ fontWeight: '500', color: '#334155' }}>{report.faculty || '-'}</div>
+                        <div style={{ fontWeight: '500', color: '#334155' }}>{report.department_name || '-'}</div>
                         <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>{report.major || '-'}</div>
                       </td>
                       <td style={{ padding: '15px', color: '#475569', fontSize: '13px' }}>{report.location}</td>
                       <td style={{ padding: '15px', color: '#475569', fontSize: '13px' }}>{report.risk_category}</td>
                       
                       <td style={{ padding: '15px', textAlign: 'center', whiteSpace: 'nowrap' }}>
-                        <SeverityBadge value={report.severity_color} size="sm" />
+                        <SeverityBadge value={report.severity_level} size="sm" />
                       </td>
-                      
+
+                      <td style={{ padding: '15px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                        <StatusBadge status={report.status} size="sm" />
+                        {(report.handled_by_name || report.handled_by_username) && (
+                          <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>{report.handled_by_name || report.handled_by_username}</div>
+                        )}
+                      </td>
+
                       <td style={{ padding: '15px' }}>
                         <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
                           <button onClick={() => navigate(`/report-detail/${report.id}`)} style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '6px 10px', backgroundColor: 'white', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', color: '#3b82f6', fontSize: '12px', fontWeight: '600' }}><FileSearch size={14} /> เปิดดู</button>
@@ -260,7 +279,7 @@ const ReportList = () => {
                     </tr>
                   );
                 }) : (
-                  <tr><td colSpan="9" style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>ไม่พบข้อมูลที่ค้นหา</td></tr>
+                  <tr><td colSpan="10" style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>ไม่พบข้อมูลที่ค้นหา</td></tr>
                 )}
               </tbody>
             </table>
@@ -308,6 +327,7 @@ const ReportList = () => {
               <th>สถานที่</th>
               <th>ลักษณะอุบัติเหตุ</th>
               <th>ระดับความรุนแรง</th>
+              <th>สถานะ</th>
             </tr>
           </thead>
           <tbody>
@@ -315,13 +335,14 @@ const ReportList = () => {
               return (
                 <tr key={report.id}>
                   {/* 🌟 โชว์วันที่เกิดเหตุตอนพิมพ์ */}
-                  <td>{new Date(report.incident_date || report.created_at).toLocaleDateString('th-TH')}</td>
+                  <td>{formatThaiDate(report.incident_date)}</td>
                   <td>{report.student_id || '-'}</td>
                   <td>{report.reporter_name || 'ไม่ระบุชื่อ'} <br/><span style={{fontSize:'10px', color:'#666'}}>{report.reporter_role}</span></td>
-                  <td>{report.faculty || '-'}<br/><span style={{fontSize:'10px', color:'#666'}}>{report.major || '-'}</span></td>
+                  <td>{report.department_name || '-'}<br/><span style={{fontSize:'10px', color:'#666'}}>{report.major || '-'}</span></td>
                   <td>{report.location}</td>
                   <td>{report.risk_category}</td>
-                  <td>{getSeverityLabel(report.severity_color)}</td>
+                  <td>{getSeverityLabel(report.severity_level)}</td>
+                  <td>{report.status}{(report.handled_by_name || report.handled_by_username) && <><br/><span style={{fontSize:'10px', color:'#666'}}>{report.handled_by_name || report.handled_by_username}</span></>}</td>
                 </tr>
               );
             })}

@@ -1,10 +1,13 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { motion, animate, useMotionValue, useSpring, useTransform, AnimatePresence } from 'framer-motion';
+import { motion, useMotionValue, useSpring, useTransform, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
 import { Plus, FileText, ShieldAlert, FileSearch, TrendingUp, Search, LogOut, User, UserPlus, Users, Download, CalendarDays } from 'lucide-react';
 import { SeverityBadge, SeverityDot } from '../components/Severity';
+import { StatusBadge } from '../components/ReportStatus';
 import { SEVERITY_LEVELS, UNKNOWN_SEVERITY, getSeverity } from '../utils/severity';
+import { API_URL } from '../utils/api';
+import { formatThaiDate, parseDateOnly } from '../utils/date';
 
 const AnimatedCounter = ({ from = 0, to }) => {
   const [count, setCount] = React.useState(from);
@@ -106,10 +109,10 @@ const Dashboard = () => {
   }, []);
 
   useEffect(() => {
-    fetch('http://localhost:5000/api/reports')
+    fetch(`${API_URL}/api/reports`)
       .then(res => res.json())
       .then(data => {
-        setReports(data);
+        setReports(Array.isArray(data) ? data : []);
         setTimeout(() => setLoading(false), 800); 
       })
       .catch(err => {
@@ -121,7 +124,7 @@ const Dashboard = () => {
   const handleLogout = async () => {
     if (adminData.id) {
       try {
-        await fetch('http://localhost:5000/api/logout', {
+        await fetch(`${API_URL}/api/logout`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ id: adminData.id })
@@ -142,8 +145,8 @@ const Dashboard = () => {
     const now = new Date();
     return reports.filter(r => {
       if (timeFilter === 'all') return true;
-      // ใช้ incident_date เป็นหลัก ถ้าไม่มีให้ใช้ created_at แทน
-      const reportDate = new Date(r.incident_date || r.created_at);
+      const reportDate = parseDateOnly(r.incident_date);
+      if (!reportDate) return false;
       const diffTime = Math.abs(now - reportDate);
       const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
@@ -170,10 +173,11 @@ const Dashboard = () => {
   const timeLabel = timeFilter === 'all' ? 'ทั้งหมด' : timeFilter === '1m' ? '1 เดือนล่าสุด' : timeFilter === '3m' ? '3 เดือนล่าสุด' : '6 เดือนล่าสุด';
 
   const totalReports = filteredReports.length;
-  // นับจำนวนตามระดับความรุนแรง 1-4 (ข้อมูลเก่าแบบ 3 ระดับจะถูกแปลงให้อัตโนมัติ)
+  const pendingCount = filteredReports.filter(r => r.status === 'รอดำเนินการ').length;
+  // นับจำนวนตามระดับความรุนแรง 1-4
   const severityStats = SEVERITY_LEVELS.map(s => ({
     ...s,
-    count: filteredReports.filter(r => getSeverity(r.severity_color).level === s.level).length,
+    count: filteredReports.filter(r => getSeverity(r.severity_level).level === s.level).length,
   }));
   const unknownCount = totalReports - severityStats.reduce((sum, s) => sum + s.count, 0);
   const severityLegend = unknownCount > 0 ? [...severityStats, { ...UNKNOWN_SEVERITY, count: unknownCount }] : severityStats;
@@ -183,7 +187,7 @@ const Dashboard = () => {
     .map(s => ({ name: s.label, value: s.count, color: s.color }));
 
   const facultyCount = filteredReports.reduce((acc, curr) => {
-    const fac = curr.faculty || 'ไม่ระบุสังกัด';
+    const fac = curr.department_name || 'ไม่ระบุสังกัด';
     acc[fac] = (acc[fac] || 0) + 1;
     return acc;
   }, {});
@@ -199,8 +203,8 @@ const Dashboard = () => {
     else if (timeFilter === '6m') startDate.setDate(now.getDate() - 180);
     else {
       if (filteredReports.length > 0) {
-        const dates = filteredReports.map(r => new Date(r.incident_date || r.created_at).getTime());
-        startDate = new Date(Math.min(...dates));
+        const dates = filteredReports.map(r => parseDateOnly(r.incident_date)?.getTime()).filter(Boolean);
+        startDate = dates.length > 0 ? new Date(Math.min(...dates)) : new Date();
       } else {
         startDate.setDate(now.getDate() - 7); 
       }
@@ -217,10 +221,9 @@ const Dashboard = () => {
     }
 
     filteredReports.forEach(r => {
-      const targetDate = r.incident_date || r.created_at;
-      if(!targetDate) return;
-      
-      const d = new Date(targetDate);
+      const d = parseDateOnly(r.incident_date);
+      if(!d) return;
+
       const dateStr = d.toLocaleDateString('th-TH', { year: 'numeric', month: 'short', day: 'numeric' });
       if(dateMap[dateStr] !== undefined) {
         dateMap[dateStr] += 1;
@@ -234,7 +237,7 @@ const Dashboard = () => {
 
   // 🌟 เรียงตารางจากวันที่เกิดเหตุล่าสุด
   const recentReports = [...filteredReports]
-    .sort((a, b) => new Date(b.incident_date || b.created_at) - new Date(a.incident_date || a.created_at))
+    .sort((a, b) => (b.incident_date || '').localeCompare(a.incident_date || '') || new Date(b.created_at) - new Date(a.created_at))
     .slice(0, 5);
 
   const cardStyle = { backgroundColor: 'rgba(255,255,255,0.9)', padding: '24px', borderRadius: '16px', border: '1px solid #e2e8f0', backdropFilter: 'blur(10px)', boxShadow: "0 4px 15px rgba(0,0,0,0.02)" };
@@ -271,7 +274,7 @@ const Dashboard = () => {
   };
 
   return (
-    <div style={{ position: 'relative', minHeight: '100vh', width: '100vw', backgroundColor: '#f8fafc', overflowX: 'hidden', padding: '40px 20px 20px 20px', boxSizing: 'border-box', color: '#1e293b', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ position: 'relative', minHeight: '100vh', width: '100%', backgroundColor: '#f8fafc', overflowX: 'hidden', padding: '40px 20px 20px 20px', boxSizing: 'border-box', color: '#1e293b', display: 'flex', flexDirection: 'column' }}>
       
       <style>
         {`
@@ -375,6 +378,7 @@ const Dashboard = () => {
             <div style={{ fontSize: '38px', fontWeight: '700', color: '#0f172a' }}>
               <AnimatedCounter to={totalReports} /> <span style={{fontSize:'16px', color:'#94a3b8', fontWeight:'500'}}>รายการ</span>
             </div>
+            <div style={{ fontSize: '13px', color: '#64748b', marginTop: '6px' }}>รอดำเนินการ {pendingCount} รายการ</div>
           </TiltCard>
           {severityStats.map(s => (
             <TiltCard key={s.level} style={{ ...cardStyle, borderTop: `4px solid ${s.color}` }}>
@@ -468,6 +472,7 @@ const Dashboard = () => {
                   <th style={{ padding: '12px 8px' }}>สถานที่</th>
                   <th style={{ padding: '12px 8px' }}>ลักษณะอุบัติเหตุ</th>
                   <th style={{ padding: '12px 8px' }}>ความรุนแรง</th>
+                  <th style={{ padding: '12px 8px' }}>สถานะ</th>
                   <th className="no-print" style={{ padding: '12px 8px', textAlign: 'center' }}>แอ็กชัน</th>
                 </tr>
               </thead>
@@ -476,7 +481,7 @@ const Dashboard = () => {
                   return (
                     <tr key={report.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
                       <td style={{ padding: '14px 8px', color: '#475569', fontSize: '14px' }}>
-                        {new Date(report.incident_date || report.created_at).toLocaleDateString('th-TH', { year: 'numeric', month: 'short', day: 'numeric' })}
+                        {formatThaiDate(report.incident_date, { year: 'numeric', month: 'short', day: 'numeric' })}
                       </td>
                       <td style={{ padding: '14px 8px', color: '#1e293b', fontSize: '14px', fontWeight: '500' }}>
                         {report.reporter_name || 'ไม่ระบุชื่อ'}
@@ -488,7 +493,10 @@ const Dashboard = () => {
                         {report.risk_category}
                       </td>
                       <td style={{ padding: '14px 8px', whiteSpace: 'nowrap' }}>
-                        <SeverityBadge value={report.severity_color} />
+                        <SeverityBadge value={report.severity_level} />
+                      </td>
+                      <td style={{ padding: '14px 8px', whiteSpace: 'nowrap' }}>
+                        <StatusBadge status={report.status} size="sm" />
                       </td>
                       <td className="no-print" style={{ padding: '14px 8px', textAlign: 'center' }}>
                         <button 
@@ -501,7 +509,7 @@ const Dashboard = () => {
                     </tr>
                   );
                 }) : (
-                  <tr><td colSpan="6" style={{ textAlign: 'center', padding: '30px', color: '#94a3b8' }}>ไม่มีรายการแจ้งเหตุในช่วงเวลานี้</td></tr>
+                  <tr><td colSpan="7" style={{ textAlign: 'center', padding: '30px', color: '#94a3b8' }}>ไม่มีรายการแจ้งเหตุในช่วงเวลานี้</td></tr>
                 )}
               </tbody>
             </table>

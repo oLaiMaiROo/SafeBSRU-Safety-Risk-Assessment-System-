@@ -1,66 +1,107 @@
 const express = require('express');
 const cors = require('cors');
-const { Pool } = require('pg');
 const multer = require('multer'); // ตัวช่วยรับไฟล์รูป
 const fs = require('fs');
 const path = require('path');
+const pool = require('./db'); // การเชื่อมต่อฐานข้อมูล (ค่าอยู่ในไฟล์ .env)
 
 const app = express();
-const port = 5000;
+const port = Number(process.env.PORT) || 5000;
 
 app.use(cors());
 app.use(express.json());
+// Express 5 ไม่สร้าง req.body ถ้าคำขอไม่มี body กันไม่ให้ handler พังตอนอ่านค่า
+app.use((req, res, next) => {
+    if (req.body === undefined) req.body = {};
+    next();
+});
 
-// สร้างโฟลเดอร์ชื่อ uploads ไว้เก็บรูปภาพ (ถ้ายังไม่มี)
-if (!fs.existsSync('./uploads')) {
-    fs.mkdirSync('./uploads');
+// โฟลเดอร์เก็บรูปภาพ อ้างอิงจากตำแหน่งไฟล์นี้ จึงรันเซิร์ฟเวอร์จากโฟลเดอร์ไหนก็ได้
+const UPLOAD_DIR = path.join(__dirname, 'uploads');
+if (!fs.existsSync(UPLOAD_DIR)) {
+    fs.mkdirSync(UPLOAD_DIR);
 }
 
-// เปิดให้ Frontend สามารถเข้ามาโหลดรูปในโฟลเดอร์ uploads ไปแสดงผลได้
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// เปิดให้ Frontend โหลดรูปในโฟลเดอร์ uploads ไปแสดงผลได้
+app.use('/uploads', express.static(UPLOAD_DIR));
 
-// ตั้งค่าที่เก็บไฟล์และชื่อไฟล์ (ไม่ให้ชื่อซ้ำกัน)
+// ตั้งชื่อไฟล์ไม่ให้ซ้ำกัน
 const storage = multer.diskStorage({
-    destination: (req, file, cb) => { cb(null, './uploads') },
+    destination: (req, file, cb) => { cb(null, UPLOAD_DIR); },
     filename: (req, file, cb) => {
         cb(null, Date.now() + '-' + Math.round(Math.random() * 1E9) + path.extname(file.originalname));
     }
 });
-const upload = multer({ storage: storage }); // รองรับการอัปโหลด
+const upload = multer({ storage });
 
-// ----------------------------------------
-// ตั้งค่า Database
-// ----------------------------------------
-const pool = new Pool({
-    user: 'postgres',
-    host: 'localhost',
-    database: 'safety_db',     
-    password: '06062547', // รหัสผ่านของคุณปลาย
-    port: 5432,
-});
-
-pool.connect((err) => {
-    if (err) console.error('❌ เชื่อมต่อฐานข้อมูลไม่สำเร็จ:', err.stack);
-    else console.log('✅ เชื่อมต่อฐานข้อมูล PostgreSQL (safety_db) สำเร็จแล้ว!');
-});
+pool.query('SELECT 1')
+    .then(() => console.log(`✅ เชื่อมต่อฐานข้อมูล PostgreSQL (${process.env.DB_NAME || 'safety_db'}) สำเร็จแล้ว!`))
+    .catch((err) => console.error('❌ เชื่อมต่อฐานข้อมูลไม่สำเร็จ:', err.message));
 
 // ========================================
-// 🔐 ระบบจัดการ Admin (อัปเดตระบบ Online)
+// ตัวช่วยทั่วไป
+// ========================================
+
+const REPORT_STATUSES = ['รอดำเนินการ', 'กำลังดำเนินการ', 'เสร็จสิ้น'];
+
+// ข้อความว่าง/ช่องว่างล้วน ให้เป็น null
+const text = (value) => {
+    if (value === undefined || value === null) return null;
+    const trimmed = String(value).trim();
+    return trimmed === '' ? null : trimmed;
+};
+
+// ตัวเลขจำนวนเต็มบวก ถ้าไม่ใช่ให้เป็น null
+const int = (value) => {
+    const t = text(value);
+    return t !== null && /^\d+$/.test(t) ? Number(t) : null;
+};
+
+// วันที่ของวันนี้ตามเวลาเครื่อง ในรูปแบบ YYYY-MM-DD
+const todayISO = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+const removeFiles = (fileNames) => {
+    fileNames.forEach((name) => {
+        const fullPath = path.join(UPLOAD_DIR, path.basename(name));
+        if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath);
+    });
+};
+
+// แปลง error จาก PostgreSQL ที่เกิดจากข้อมูลผิด ให้เป็นข้อความที่บอกผู้ใช้ได้ (HTTP 400)
+const DB_ERROR_MESSAGES = {
+    '23502': 'กรอกข้อมูลที่จำเป็นไม่ครบ',
+    '23503': 'ข้อมูลอ้างอิงไม่ถูกต้อง (หน่วยงาน ระดับความรุนแรง หรือผู้ดูแลระบบ)',
+    '23505': 'ข้อมูลนี้มีอยู่ในระบบแล้ว',
+    '23514': 'ข้อมูลไม่อยู่ในรูปแบบที่ระบบรับได้',
+    '22007': 'รูปแบบวันที่ไม่ถูกต้อง',
+    '22008': 'รูปแบบวันที่ไม่ถูกต้อง',
+    '22P02': 'รูปแบบข้อมูลไม่ถูกต้อง',
+};
+const sendError = (res, err, fallback) => {
+    const message = DB_ERROR_MESSAGES[err.code];
+    if (message) return res.status(400).json({ error: message });
+    console.error(fallback, err.message);
+    return res.status(500).json({ error: fallback });
+};
+
+// ========================================
+// 🔐 ระบบจัดการ Admin (รหัสผ่านเก็บแบบเข้ารหัส bcrypt ด้วย pgcrypto)
 // ========================================
 
 // API 1: สำหรับล็อกอิน (Login) + ตั้งสถานะเป็น Online
 app.post('/api/login', async (req, res) => {
     try {
         const { username, password } = req.body;
-        // เช็คว่ามีไอดีและรหัสตรงกันใน Database ไหม
         const result = await pool.query(
-            'SELECT id, username, full_name FROM admins WHERE username = $1 AND password = $2',
-            [username, password]
+            'SELECT id, username, full_name FROM admins WHERE username = $1 AND password_hash = crypt($2, password_hash)',
+            [text(username), String(password ?? '')]
         );
 
         if (result.rows.length > 0) {
             const adminData = result.rows[0];
-            // 🌟 อัปเดตสถานะเป็นออนไลน์
             await pool.query('UPDATE admins SET is_online = true WHERE id = $1', [adminData.id]);
             res.json({ success: true, admin: adminData, message: 'เข้าสู่ระบบสำเร็จ' });
         } else {
@@ -75,9 +116,8 @@ app.post('/api/login', async (req, res) => {
 // API 1.5: สำหรับล็อกเอาต์ (Logout) + ตั้งสถานะเป็น Offline
 app.post('/api/logout', async (req, res) => {
     try {
-        const { id } = req.body;
+        const id = int(req.body.id);
         if (id) {
-            // 🌟 อัปเดตสถานะเป็นออฟไลน์
             await pool.query('UPDATE admins SET is_online = false WHERE id = $1', [id]);
         }
         res.json({ success: true, message: 'ออกจากระบบสำเร็จ' });
@@ -101,20 +141,27 @@ app.get('/api/admins', async (req, res) => {
 // API 3: สำหรับเพิ่ม Admin ใหม่
 app.post('/api/admins', async (req, res) => {
     try {
-        const { username, password, full_name } = req.body;
-        
-        // เช็คก่อนว่ามี username นี้ในระบบหรือยัง
-        const checkExist = await pool.query('SELECT * FROM admins WHERE username = $1', [username]);
+        const username = text(req.body.username);
+        const password = String(req.body.password ?? '');
+        const fullName = text(req.body.full_name);
+        if (!username || password.trim() === '') {
+            return res.status(400).json({ success: false, message: 'กรุณากรอกชื่อผู้ใช้และรหัสผ่าน' });
+        }
+
+        const checkExist = await pool.query('SELECT 1 FROM admins WHERE username = $1', [username]);
         if (checkExist.rows.length > 0) {
             return res.status(400).json({ success: false, message: 'ชื่อผู้ใช้นี้มีอยู่ในระบบแล้ว โปรดใช้ชื่ออื่น' });
         }
 
         const result = await pool.query(
-            'INSERT INTO admins (username, password, full_name) VALUES ($1, $2, $3) RETURNING id, username, full_name',
-            [username, password, full_name]
+            "INSERT INTO admins (username, password_hash, full_name) VALUES ($1, crypt($2, gen_salt('bf', 10)), $3) RETURNING id, username, full_name",
+            [username, password, fullName]
         );
         res.json({ success: true, admin: result.rows[0], message: 'สร้างบัญชีแอดมินใหม่สำเร็จ' });
     } catch (err) {
+        if (err.code === '23505') {
+            return res.status(400).json({ success: false, message: 'ชื่อผู้ใช้นี้มีอยู่ในระบบแล้ว โปรดใช้ชื่ออื่น' });
+        }
         console.error("Add Admin Error:", err.message);
         res.status(500).json({ error: 'เกิดข้อผิดพลาดในการสร้างบัญชี' });
     }
@@ -123,9 +170,10 @@ app.post('/api/admins', async (req, res) => {
 // API 4: สำหรับดึงข้อมูลโปรไฟล์แอดมินมาแสดง (รายคน)
 app.get('/api/admins/:id', async (req, res) => {
     try {
-        const { id } = req.params;
+        const id = int(req.params.id);
+        if (!id) return res.status(404).json({ message: 'ไม่พบข้อมูลผู้ดูแลระบบ' });
         const result = await pool.query('SELECT id, username, full_name, created_at FROM admins WHERE id = $1', [id]);
-        
+
         if (result.rows.length > 0) {
             res.json(result.rows[0]);
         } else {
@@ -140,23 +188,20 @@ app.get('/api/admins/:id', async (req, res) => {
 // API 5: สำหรับแก้ไขโปรไฟล์แอดมิน (อัปเดตชื่อ หรือ เปลี่ยนรหัสผ่าน)
 app.put('/api/admins/:id', async (req, res) => {
     try {
-        const { id } = req.params;
-        const { full_name, password } = req.body;
-        
-        let updateQuery;
-        let queryParams;
+        const id = int(req.params.id);
+        const fullName = text(req.body.full_name);
+        const password = String(req.body.password ?? '');
+        if (!id) return res.status(404).json({ message: "ไม่พบข้อมูลที่ต้องการแก้ไข" });
 
-        // ถ้ามีการส่งรหัสผ่านใหม่มาด้วย ให้เปลี่ยนรหัสผ่านด้วย
-        if (password && password.trim() !== "") {
-            updateQuery = 'UPDATE admins SET full_name = $1, password = $2 WHERE id = $3 RETURNING id, username, full_name';
-            queryParams = [full_name, password, id];
+        let result;
+        if (password.trim() !== '') {
+            result = await pool.query(
+                "UPDATE admins SET full_name = $1, password_hash = crypt($2, gen_salt('bf', 10)) WHERE id = $3 RETURNING id, username, full_name",
+                [fullName, password, id]
+            );
         } else {
-            // ถ้าไม่ส่งรหัสผ่านมา ให้เปลี่ยนแค่ชื่อ
-            updateQuery = 'UPDATE admins SET full_name = $1 WHERE id = $2 RETURNING id, username, full_name';
-            queryParams = [full_name, id];
+            result = await pool.query('UPDATE admins SET full_name = $1 WHERE id = $2 RETURNING id, username, full_name', [fullName, id]);
         }
-
-        const result = await pool.query(updateQuery, queryParams);
 
         if (result.rowCount === 0) {
             return res.status(404).json({ message: "ไม่พบข้อมูลที่ต้องการแก้ไข" });
@@ -169,113 +214,237 @@ app.put('/api/admins/:id', async (req, res) => {
 });
 
 // ========================================
-// 📝 ระบบรายงานอุบัติเหตุ (โครงสร้างใหม่ แยกฟิลด์ชัดเจน)
+// 🏢 ข้อมูลอ้างอิง
 // ========================================
+
+app.get('/api/departments', async (req, res) => {
+    try {
+        const result = await pool.query('SELECT id, name, group_name FROM departments ORDER BY sort_order, id');
+        res.json(result.rows);
+    } catch (err) {
+        sendError(res, err, 'ดึงรายชื่อหน่วยงานไม่สำเร็จ');
+    }
+});
+
+app.get('/api/severity-levels', async (req, res) => {
+    try {
+        const result = await pool.query('SELECT level, name, description FROM severity_levels ORDER BY level');
+        res.json(result.rows);
+    } catch (err) {
+        sendError(res, err, 'ดึงระดับความรุนแรงไม่สำเร็จ');
+    }
+});
+
+// ========================================
+// 📝 ระบบรายงานอุบัติเหตุ
+// ========================================
+
+// ข้อมูลรายงานพร้อมชื่อหน่วยงาน ระดับความรุนแรง ผู้รับเรื่อง และรายชื่อไฟล์รูป
+const REPORT_SELECT = `
+    SELECT r.id, r.reporter_name, r.reporter_type, r.student_id, r.student_year, r.position,
+           CASE WHEN r.reporter_type = 'student'
+                THEN 'นักศึกษา' || COALESCE('ชั้นปี ' || r.student_year, '')
+                ELSE COALESCE(r.position, 'บุคลากร') END AS reporter_role,
+           r.department_id, d.name AS department_name, d.group_name AS department_group, r.major,
+           r.incident_date, r.location, r.risk_category, r.description,
+           r.severity_level, s.name AS severity_name,
+           r.status, r.handled_by, a.full_name AS handled_by_name, a.username AS handled_by_username,
+           r.created_at,
+           COALESCE((SELECT json_agg(i.file_name ORDER BY i.id) FROM report_images i WHERE i.report_id = r.id), '[]'::json) AS images
+    FROM reports r
+    JOIN departments d ON d.id = r.department_id
+    JOIN severity_levels s ON s.level = r.severity_level
+    LEFT JOIN admins a ON a.id = r.handled_by`;
+
+const findReport = async (id) => {
+    const result = await pool.query(`${REPORT_SELECT} WHERE r.id = $1`, [id]);
+    return result.rows[0];
+};
+
+// ตรวจข้อมูลจากฟอร์มแจ้งเหตุ/แก้ไข คืนค่า { data } หรือ { error }
+const readReportForm = (body) => {
+    const reporterType = body.reporter_type === 'personnel' ? 'personnel' : 'student';
+    const data = {
+        reporter_name: text(body.reporter_name),
+        reporter_type: reporterType,
+        student_id: reporterType === 'student' ? text(body.student_id) : null,
+        student_year: reporterType === 'student' ? int(body.student_year) : null,
+        position: reporterType === 'personnel' ? text(body.position) : null,
+        department_id: int(body.department_id),
+        major: text(body.major),
+        incident_date: text(body.incident_date),
+        location: text(body.location),
+        risk_category: text(body.risk_category),
+        description: text(body.description),
+        severity_level: int(body.severity_level),
+    };
+
+    if (!data.reporter_name) return { error: 'กรุณากรอกชื่อ-นามสกุลผู้แจ้ง' };
+    if (reporterType === 'personnel' && !data.position) return { error: 'กรุณากรอกตำแหน่งของบุคลากร' };
+    if (data.student_year !== null && (data.student_year < 1 || data.student_year > 8)) return { error: 'ชั้นปีต้องอยู่ระหว่าง 1 ถึง 8' };
+    if (!data.department_id) return { error: 'กรุณาเลือกหน่วยงานที่สังกัด' };
+    if (!data.incident_date || !/^\d{4}-\d{2}-\d{2}$/.test(data.incident_date)) return { error: 'กรุณาระบุวันที่เกิดเหตุ' };
+    if (data.incident_date > todayISO()) return { error: 'วันที่เกิดเหตุต้องไม่เกินวันนี้' };
+    if (!data.location) return { error: 'กรุณากรอกสถานที่เกิดเหตุ' };
+    if (!data.risk_category) return { error: 'กรุณากรอกลักษณะอุบัติเหตุ' };
+    if (!data.severity_level) return { error: 'กรุณาเลือกระดับความรุนแรง' };
+    return { data };
+};
+
+const REPORT_COLUMNS = [
+    'reporter_name', 'reporter_type', 'student_id', 'student_year', 'position', 'department_id', 'major',
+    'incident_date', 'location', 'risk_category', 'description', 'severity_level',
+];
 
 // 1. API ดึงข้อมูลทั้งหมด
 app.get('/api/reports', async (req, res) => {
     try {
-        const allReports = await pool.query('SELECT * FROM reports ORDER BY created_at DESC');
-        res.json(allReports.rows);
+        const result = await pool.query(`${REPORT_SELECT} ORDER BY r.created_at DESC, r.id DESC`);
+        res.json(result.rows);
     } catch (err) {
-        res.status(500).send('Server Error');
+        sendError(res, err, 'ดึงข้อมูลรายงานไม่สำเร็จ');
     }
 });
 
-// 2. API สร้างข้อมูลใหม่ (พร้อมอัปโหลดรูป)
-app.post('/api/reports', upload.array('images', 5), async (req, res) => {
+// 1.5 API ดึงรายงานรายการเดียว
+app.get('/api/reports/:id', async (req, res) => {
     try {
-        // 🌟 เพิ่มการรับค่า student_id และ major แยกต่างหาก
-        const { reporter_name, student_id, reporter_role, faculty, major, location, risk_category, description, severity_color } = req.body;
-        
-        // เอาชื่อไฟล์รูปทั้งหมดมาต่อกันด้วยลูกน้ำ (,) เพื่อเก็บลง Database คอลัมน์เดียว
-        const imageFiles = req.files ? req.files.map(file => file.filename).join(',') : null;
-
-        const newReport = await pool.query(
-            `INSERT INTO reports 
-            (reporter_name, student_id, reporter_role, faculty, major, location, risk_category, description, severity_color, image_path) 
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
-            [reporter_name, student_id, reporter_role, faculty, major, location, risk_category, description, severity_color, imageFiles]
-        );
-
-        res.json(newReport.rows[0]);
+        const id = int(req.params.id);
+        const report = id ? await findReport(id) : null;
+        if (!report) return res.status(404).json({ error: 'ไม่พบรายงานนี้' });
+        res.json(report);
     } catch (err) {
-        console.error(err.message);
-        res.status(500).send('Error saving report');
+        sendError(res, err, 'ดึงข้อมูลรายงานไม่สำเร็จ');
     }
 });
 
-// 3. API สำหรับลบข้อมูล
+// 2. API สร้างข้อมูลใหม่ (พร้อมอัปโหลดรูปสูงสุด 5 รูป)
+app.post('/api/reports', upload.array('images', 5), async (req, res) => {
+    const uploaded = (req.files || []).map((file) => file.filename);
+    const { data, error } = readReportForm(req.body);
+    if (error) {
+        removeFiles(uploaded);
+        return res.status(400).json({ error });
+    }
+
+    let client;
+    try {
+        client = await pool.connect();
+        await client.query('BEGIN');
+        const placeholders = REPORT_COLUMNS.map((_, i) => `$${i + 1}`).join(', ');
+        const inserted = await client.query(
+            `INSERT INTO reports (${REPORT_COLUMNS.join(', ')}) VALUES (${placeholders}) RETURNING id`,
+            REPORT_COLUMNS.map((column) => data[column])
+        );
+        const reportId = inserted.rows[0].id;
+        for (const fileName of uploaded) {
+            await client.query('INSERT INTO report_images (report_id, file_name) VALUES ($1, $2)', [reportId, fileName]);
+        }
+        await client.query('COMMIT');
+        res.status(201).json(await findReport(reportId));
+    } catch (err) {
+        if (client) await client.query('ROLLBACK').catch(() => {});
+        removeFiles(uploaded);
+        sendError(res, err, 'บันทึกรายงานไม่สำเร็จ');
+    } finally {
+        client?.release();
+    }
+});
+
+// 3. API สำหรับลบข้อมูล (แถวใน report_images ถูกลบตามอัตโนมัติด้วย ON DELETE CASCADE)
 app.delete('/api/reports/:id', async (req, res) => {
     try {
-        const { id } = req.params;
+        const id = int(req.params.id);
+        if (!id) return res.status(404).json({ message: "ไม่พบข้อมูลที่ต้องการลบ" });
 
-        // 1. ดึงข้อมูลก่อนลบ เพื่อเช็คว่ามีไฟล์รูปต้องตามไปลบไหม
-        const report = await pool.query('SELECT image_path FROM reports WHERE id = $1', [id]);
-        
-        if (report.rows.length > 0 && report.rows[0].image_path) {
-            const imagePaths = report.rows[0].image_path.split(',');
-            // วนลูปเช็คและลบไฟล์รูปภาพในโฟลเดอร์ uploads
-            imagePaths.forEach(imgPath => {
-                const fullPath = path.join(__dirname, 'uploads', imgPath);
-                if (fs.existsSync(fullPath)) {
-                    fs.unlinkSync(fullPath); 
-                }
-            });
-        }
-
-        // 2. ลบข้อมูลจาก Database จริงๆ
-        const deleteQuery = await pool.query('DELETE FROM reports WHERE id = $1', [id]);
-        
-        if (deleteQuery.rowCount === 0) {
+        const images = await pool.query('SELECT file_name FROM report_images WHERE report_id = $1', [id]);
+        const deleted = await pool.query('DELETE FROM reports WHERE id = $1', [id]);
+        if (deleted.rowCount === 0) {
             return res.status(404).json({ message: "ไม่พบข้อมูลที่ต้องการลบ" });
         }
-        
+
+        removeFiles(images.rows.map((row) => row.file_name));
         res.json({ message: 'ลบข้อมูลและรูปภาพที่เกี่ยวข้องสำเร็จ' });
     } catch (err) {
-        console.error("Error deleting:", err.message);
-        res.status(500).json({ error: 'เกิดข้อผิดพลาดในการลบข้อมูล' });
+        sendError(res, err, 'เกิดข้อผิดพลาดในการลบข้อมูล');
     }
 });
 
-// 4. API สำหรับแก้ไข/อัปเดตข้อมูล (PUT)
+// 4. API สำหรับแก้ไข/อัปเดตข้อมูล (ถ้าอัปโหลดรูปใหม่ รูปเดิมจะถูกแทนที่และลบไฟล์ทิ้ง)
 app.put('/api/reports/:id', upload.array('images', 5), async (req, res) => {
-    try {
-        const { id } = req.params;
-        // 🌟 เพิ่มการรับค่า student_id และ major แยกต่างหาก
-        const { reporter_name, student_id, reporter_role, faculty, major, location, risk_category, description, severity_color } = req.body;
-        
-        // เช็คว่ามีอัปโหลดรูปภาพใหม่มาด้วยไหม
-        const imageFiles = req.files && req.files.length > 0 ? req.files.map(file => file.filename).join(',') : null;
-
-        let updateQuery;
-        let queryParams;
-
-        // ถ้ามีรูปใหม่มา ให้ทับรูปเดิม ถ้าไม่มีรูปใหม่ ให้เก็บรูปเดิมไว้
-        if (imageFiles) {
-            updateQuery = `
-                UPDATE reports 
-                SET reporter_name=$1, student_id=$2, reporter_role=$3, faculty=$4, major=$5, location=$6, risk_category=$7, description=$8, severity_color=$9, image_path=$10 
-                WHERE id=$11 RETURNING *`;
-            queryParams = [reporter_name, student_id, reporter_role, faculty, major, location, risk_category, description, severity_color, imageFiles, id];
-        } else {
-            updateQuery = `
-                UPDATE reports 
-                SET reporter_name=$1, student_id=$2, reporter_role=$3, faculty=$4, major=$5, location=$6, risk_category=$7, description=$8, severity_color=$9 
-                WHERE id=$10 RETURNING *`;
-            queryParams = [reporter_name, student_id, reporter_role, faculty, major, location, risk_category, description, severity_color, id];
-        }
-
-        const updatedReport = await pool.query(updateQuery, queryParams);
-
-        if (updatedReport.rowCount === 0) {
-            return res.status(404).json({ message: "ไม่พบข้อมูลที่ต้องการแก้ไข" });
-        }
-        res.json({ message: 'อัปเดตข้อมูลสำเร็จ', data: updatedReport.rows[0] });
-    } catch (err) {
-        console.error("Error updating:", err.message);
-        res.status(500).json({ error: 'เกิดข้อผิดพลาดในการแก้ไขข้อมูล' });
+    const uploaded = (req.files || []).map((file) => file.filename);
+    const id = int(req.params.id);
+    const { data, error } = readReportForm(req.body);
+    if (!id || error) {
+        removeFiles(uploaded);
+        return res.status(id ? 400 : 404).json({ error: error || 'ไม่พบรายงานที่ต้องการแก้ไข' });
     }
+
+    let client;
+    try {
+        client = await pool.connect();
+        await client.query('BEGIN');
+        const assignments = REPORT_COLUMNS.map((column, i) => `${column} = $${i + 1}`).join(', ');
+        const updated = await client.query(
+            `UPDATE reports SET ${assignments} WHERE id = $${REPORT_COLUMNS.length + 1}`,
+            [...REPORT_COLUMNS.map((column) => data[column]), id]
+        );
+        if (updated.rowCount === 0) {
+            await client.query('ROLLBACK');
+            removeFiles(uploaded);
+            return res.status(404).json({ error: 'ไม่พบรายงานที่ต้องการแก้ไข' });
+        }
+
+        let replacedFiles = [];
+        if (uploaded.length > 0) {
+            const old = await client.query('DELETE FROM report_images WHERE report_id = $1 RETURNING file_name', [id]);
+            replacedFiles = old.rows.map((row) => row.file_name);
+            for (const fileName of uploaded) {
+                await client.query('INSERT INTO report_images (report_id, file_name) VALUES ($1, $2)', [id, fileName]);
+            }
+        }
+        await client.query('COMMIT');
+        removeFiles(replacedFiles);
+        res.json({ message: 'อัปเดตข้อมูลสำเร็จ', data: await findReport(id) });
+    } catch (err) {
+        if (client) await client.query('ROLLBACK').catch(() => {});
+        removeFiles(uploaded);
+        sendError(res, err, 'เกิดข้อผิดพลาดในการแก้ไขข้อมูล');
+    } finally {
+        client?.release();
+    }
+});
+
+// 5. API เปลี่ยนสถานะรายงาน: แอดมินที่กดรับเรื่องจะถูกบันทึกเป็นผู้รับผิดชอบ (handled_by)
+app.patch('/api/reports/:id/status', async (req, res) => {
+    try {
+        const id = int(req.params.id);
+        const status = text(req.body.status);
+        const adminId = int(req.body.admin_id);
+        if (!id) return res.status(404).json({ error: 'ไม่พบรายงานนี้' });
+        if (!REPORT_STATUSES.includes(status)) return res.status(400).json({ error: 'สถานะไม่ถูกต้อง' });
+        if (status !== 'รอดำเนินการ' && !adminId) {
+            return res.status(400).json({ error: 'ต้องเข้าสู่ระบบในฐานะผู้ดูแลระบบก่อนรับเรื่อง' });
+        }
+
+        // กลับเป็น "รอดำเนินการ" = ยังไม่มีผู้รับเรื่อง
+        const handledBy = status === 'รอดำเนินการ' ? null : adminId;
+        const updated = await pool.query('UPDATE reports SET status = $1, handled_by = $2 WHERE id = $3', [status, handledBy, id]);
+        if (updated.rowCount === 0) return res.status(404).json({ error: 'ไม่พบรายงานนี้' });
+        res.json(await findReport(id));
+    } catch (err) {
+        sendError(res, err, 'อัปเดตสถานะไม่สำเร็จ');
+    }
+});
+
+// รับ error ที่หลุดมา เช่น อัปโหลดรูปเกิน 5 รูป
+app.use((err, req, res, next) => {
+    if (err instanceof multer.MulterError) {
+        const message = err.code === 'LIMIT_UNEXPECTED_FILE' ? 'อัปโหลดรูปได้สูงสุด 5 รูป' : 'อัปโหลดไฟล์ไม่สำเร็จ';
+        return res.status(400).json({ error: message });
+    }
+    console.error('Unhandled Error:', err.message);
+    res.status(500).json({ error: 'เกิดข้อผิดพลาดในเซิร์ฟเวอร์' });
 });
 
 app.listen(port, () => {

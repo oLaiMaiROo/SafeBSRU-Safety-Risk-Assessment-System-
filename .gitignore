@@ -1,3 +1,5 @@
 node_modules/
 backend/uploads/
 .env
+# Database backups (contain real data and passwords)
+db-backups/

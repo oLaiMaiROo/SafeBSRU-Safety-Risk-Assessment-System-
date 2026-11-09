@@ -14,11 +14,14 @@ A comprehensive web-based platform designed for monitoring, reporting, and evalu
     *   **Level 3 – สูง (High):** Serious injury or illness.
     *   **Level 4 – สูงมาก (Very high):** Disability or death.
 
-    Reports saved under the old 3-level scale are shown as Level 1 (low), Level 2 (warning) and Level 3 (critical).
+    Reports saved under the old 3-level scale were migrated to Level 1 (low), Level 2 (warning) and Level 3 (critical).
+
+*   **📋 Case Handling**
+    Each report has a status (รอดำเนินการ → กำลังดำเนินการ → เสร็จสิ้น). The administrator who changes the status is recorded as the person handling the case.
 
 *   **🔍 Evidence Data Management & Filters**
     *   **In-depth Search:** Search incident history using reporter ID, full name, or filter by specific faculty and department.
-    *   **Status Filtering:** Filter by exact incident dates or narrow down by desired severity levels. Includes a selection system to manage multiple records simultaneously.
+    *   **Status Filtering:** Filter by exact incident dates, severity levels or case status. Includes a selection system to manage multiple records simultaneously.
 
 *   **📄 Export System & Reporting**
     *   Export surveillance lists and statistics as **Excel (.csv)** files, fully formatted through data cleansing and ready for further analysis.
@@ -29,7 +32,19 @@ A comprehensive web-based platform designed for monitoring, reporting, and evalu
 
 *   **🔐 Admin & Security Controls**
     *   **STATUS: ADMIN** - Restricts data management, record deletion, and in-depth detail access exclusively to verified administrators.
-    *   **Account Security:** Features a robust administrator profile management system requiring current password verification before allowing credential updates, effectively preventing unauthorized access.
+    *   **Account Security:** Features a robust administrator profile management system requiring current password verification before allowing credential updates, effectively preventing unauthorized access. Passwords are stored as bcrypt hashes (PostgreSQL `pgcrypto`).
+
+## 🗄️ Database
+
+PostgreSQL database `safety_db` with 5 tables: `reports` (center), `departments`, `severity_levels`, `admins` and `report_images`. See the ER diagram in [`docs/er-diagram.png`](docs/er-diagram.png) and the migration notes in [`backend/migrations/README.md`](backend/migrations/README.md).
+
+## ▶️ Running locally
+
+1. Copy `backend/.env.example` to `backend/.env` and fill in your PostgreSQL password.
+2. On an existing database created before November 2026, back up and then run the migration once (see `backend/migrations/README.md`):
+   `cd backend && node migrate.js migrations/001_relations_and_cleanup.sql`
+3. Start the backend: `cd backend && npm start` (http://localhost:5000)
+4. Start the frontend: `cd frontend && npm run dev` (http://localhost:5173)
 
 ---
 *Developed for Bansomdejchaopraya Rajabhat University (BSRU)*

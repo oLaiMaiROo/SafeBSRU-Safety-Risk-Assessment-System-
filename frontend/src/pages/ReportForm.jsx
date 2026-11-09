@@ -1,50 +1,14 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { ShieldAlert, ArrowLeft, Send, CheckCircle2, ImagePlus, X, User, MapPin, GraduationCap, Briefcase, ListChecks, CalendarDays } from 'lucide-react';
+import { ShieldAlert, ArrowLeft, Send, CheckCircle2, ImagePlus, X, User, MapPin, GraduationCap, Briefcase, ListChecks } from 'lucide-react';
 import { SeverityBadge, SeverityPicker } from '../components/Severity';
-import { DEFAULT_SEVERITY_VALUE } from '../utils/severity';
+import { DEFAULT_SEVERITY_LEVEL } from '../utils/severity';
+import { API_URL, readApiError } from '../utils/api';
+import { formatThaiDate, todayISO } from '../utils/date';
+import { useDepartments, STUDENT_DEPARTMENT_GROUP } from '../utils/useDepartments';
 
-const bsruDepartments = [
-  {
-    group: "คณะและวิทยาลัย",
-    items: [
-      "คณะวิทยาศาสตร์และเทคโนโลยี", "คณะครุศาสตร์", "คณะมนุษยศาสตร์และสังคมศาสตร์", 
-      "คณะวิทยาการจัดการ", "คณะวิศวกรรมศาสตร์และเทคโนโลยีอุตสาหกรรม", 
-      "วิทยาลัยการดนตรี", "คณะสหเวชศาสตร์", "คณะพยาบาลศาสตร์"
-    ]
-  },
-  {
-    group: "สำนักงานอธิการบดี",
-    items: [
-      "สำนักงานอธิการบดี กองบริหารงานบุคคล",
-      "สำนักงานอธิการบดี กองกลาง",
-      "สำนักงานอธิการบดี กองอาคารสถานที่และสิ่งแวดล้อม",
-      "สำนักงานอธิการบดี กองนโยบายและแผน (งานประกันคุณภาพการศึกษา)",
-      "สำนักงานอธิการบดี กองคลัง (งานพัสดุ)"
-    ]
-  },
-  {
-    group: "สำนักและหน่วยงาน",
-    items: [
-      "สำนักส่งเสริมวิชาการและงานทะเบียน", "สำนักวิทยบริการและเทคโนโลยีสารสนเทศ",
-      "สำนักบริหารกิจการนักศึกษา", "สำนักคอมพิวเตอร์", "สำนักประชาสัมพันธ์และสารสนเทศ",
-      "สำนักวิเทศสัมพันธ์และเครือข่ายอาเซียน", "สำนักศิลปะและวัฒนธรรม",
-      "สถาบันวิจัยและพัฒนา", "สำนักงานสภามหาวิทยาลัย", "หน่วยงานตรวจสอบภายใน"
-    ]
-  },
-  {
-    group: "สถาบัน ศูนย์ และสภา",
-    items: [
-      "สถาบันขงจื่อ", "สภาวิชาการ", "สภาคณาจารย์และข้าราชการ",
-      "ศูนย์ส่งเสริมการเรียนรู้และถ่ายทอดนวัตกรรม (PLI BSRU)",
-      "ศูนย์สหกิจศึกษาและการศึกษาเชิงบูรณาการกับการทำงาน (CWIE)",
-      "ศูนย์ประสานงานรับสมัครนักศึกษาต่างชาติ (IACC)",
-      "ศูนย์สร้างสรรค์ภาพลักษณ์ มรภ.บ้านสมเด็จเจ้าพระยา",
-      "อื่นๆ"
-    ]
-  }
-];
+const STUDENT_YEARS = [1, 2, 3, 4, 5, 6, 7, 8];
 
 const ReportForm = () => {
   const navigate = useNavigate();
@@ -55,8 +19,8 @@ const ReportForm = () => {
 
   const [reporterType, setReporterType] = useState('student');
 
-  // 🌟 ดึงวันที่ปัจจุบันมาเป็นค่าเริ่มต้นแบบ YYYY-MM-DD
-  const today = new Date().toISOString().split('T')[0];
+  // 🌟 ดึงวันที่ปัจจุบัน (ตามเวลาเครื่อง) มาเป็นค่าเริ่มต้นแบบ YYYY-MM-DD
+  const today = todayISO();
 
   const [formData, setFormData] = useState({
     reporter_name: '', 
@@ -64,14 +28,18 @@ const ReportForm = () => {
     location: '', 
     risk_category: '', 
     description: '', 
-    severity_color: DEFAULT_SEVERITY_VALUE
+    severity_level: DEFAULT_SEVERITY_LEVEL
   });
 
   const [studentData, setStudentData] = useState({ id: '', year: '' });
   const [personnelData, setPersonnelData] = useState({ position: '' });
 
-  const [selectedFaculty, setSelectedFaculty] = useState('');
+  // หน่วยงานโหลดจากตาราง departments; เก็บเป็น id
+  const { departments, groups, error: departmentsError } = useDepartments();
+  const studentGroup = groups.find(g => g.group === STUDENT_DEPARTMENT_GROUP);
+  const [departmentId, setDepartmentId] = useState('');
   const [selectedMajor, setSelectedMajor] = useState('');
+  const departmentName = departments.find(d => String(d.id) === departmentId)?.name || '-';
 
   const [images, setImages] = useState([]);
   const [previewUrls, setPreviewUrls] = useState([]);
@@ -99,7 +67,7 @@ const ReportForm = () => {
 
   const handleTypeToggle = (type) => {
     setReporterType(type);
-    setSelectedFaculty('');
+    setDepartmentId('');
     setSelectedMajor('');
   };
 
@@ -130,20 +98,17 @@ const ReportForm = () => {
 
     const submitData = new FormData();
 
-    // บุคลากรไม่ต้องกรอกรหัสแล้ว จึงส่งรหัสเฉพาะนักศึกษา
-    const currentId = reporterType === 'student' ? studentData.id : '';
-    submitData.append('student_id', currentId || '');
-
-    let currentRole = '';
+    submitData.append('reporter_type', reporterType);
     if (reporterType === 'student') {
-        currentRole = studentData.year ? `นักศึกษาชั้นปี ${studentData.year}` : 'นักศึกษา';
+        submitData.append('student_id', studentData.id);
+        submitData.append('student_year', studentData.year);
     } else {
-        currentRole = personnelData.position || 'บุคลากร';
+        // บุคลากรไม่ต้องกรอกรหัสแล้ว
+        submitData.append('position', personnelData.position);
     }
-    submitData.append('reporter_role', currentRole);
 
-    submitData.append('faculty', selectedFaculty || '');
-    submitData.append('major', selectedMajor || '');
+    submitData.append('department_id', departmentId);
+    submitData.append('major', selectedMajor);
 
     Object.keys(formData).forEach(key => {
         submitData.append(key, formData[key]);
@@ -154,9 +119,9 @@ const ReportForm = () => {
     });
 
     try {
-      const response = await fetch('http://localhost:5000/api/reports', {
+      const response = await fetch(`${API_URL}/api/reports`, {
         method: 'POST',
-        body: submitData 
+        body: submitData
       });
 
       if (response.ok) {
@@ -169,9 +134,7 @@ const ReportForm = () => {
           }
         }, 1500);
       } else {
-        const errorText = await response.text();
-        console.error('Server Error:', errorText);
-        alert('เกิดข้อผิดพลาดจากฐานข้อมูล โปรดลองอีกครั้ง');
+        alert(await readApiError(response, 'เกิดข้อผิดพลาดจากฐานข้อมูล โปรดลองอีกครั้ง'));
         setIsSubmitting(false);
       }
     } catch (error) {
@@ -179,13 +142,6 @@ const ReportForm = () => {
       alert('ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้ โปรดตรวจสอบว่า Node.js รันอยู่หรือไม่');
       setIsSubmitting(false); 
     }
-  };
-
-  // แปลงรูปแบบวันที่ให้อ่านง่ายสำหรับ Pop-up
-  const formatThaiDate = (dateString) => {
-    if (!dateString) return '-';
-    const date = new Date(dateString);
-    return date.toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' });
   };
 
   return (
@@ -222,16 +178,16 @@ const ReportForm = () => {
                   <div><span style={{color: '#94a3b8'}}>ตำแหน่ง:</span> <strong style={{color: '#1e293b'}}>{personnelData.position || '-'}</strong></div>
                 )}
                 
-                <div><span style={{color: '#94a3b8'}}>สังกัด / หน่วยงาน:</span> <strong style={{color: '#1e293b'}}>{selectedFaculty}</strong></div>
+                <div><span style={{color: '#94a3b8'}}>สังกัด / หน่วยงาน:</span> <strong style={{color: '#1e293b'}}>{departmentName}</strong></div>
                 {selectedMajor && <div><span style={{color: '#94a3b8'}}>สาขา / แผนก:</span> <strong style={{color: '#1e293b'}}>{selectedMajor}</strong></div>}
                 
                 <div style={{height: '1px', backgroundColor: '#e2e8f0', margin: '5px 0'}}></div>
                 
                 {/* 🌟 สรุปข้อมูลเหตุการณ์ (เพิ่มวันที่) */}
-                <div><span style={{color: '#94a3b8'}}>วันที่เกิดเหตุ:</span> <strong style={{color: '#1e293b'}}>{formatThaiDate(formData.incident_date)}</strong></div>
+                <div><span style={{color: '#94a3b8'}}>วันที่เกิดเหตุ:</span> <strong style={{color: '#1e293b'}}>{formatThaiDate(formData.incident_date, { year: 'numeric', month: 'long', day: 'numeric' })}</strong></div>
                 <div><span style={{color: '#94a3b8'}}>สถานที่เกิดเหตุ:</span> <strong style={{color: '#1e293b'}}>{formData.location}</strong></div>
                 <div><span style={{color: '#94a3b8'}}>ลักษณะอุบัติเหตุ:</span> <strong style={{color: '#1e293b'}}>{formData.risk_category}</strong></div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}><span style={{color: '#94a3b8'}}>ระดับความรุนแรง:</span> <SeverityBadge value={formData.severity_color} size="sm" /></div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}><span style={{color: '#94a3b8'}}>ระดับความรุนแรง:</span> <SeverityBadge value={formData.severity_level} size="sm" /></div>
                 {formData.description && (
                   <div>
                     <span style={{color: '#94a3b8', display: 'block', marginBottom: '4px'}}>รายละเอียด:</span> 
@@ -325,17 +281,20 @@ const ReportForm = () => {
                             </div>
                             <div>
                               <label style={labelStyle}>ชั้นปี</label>
-                              <input type="text" name="year" value={studentData.year} onChange={handleStudentChange} placeholder="เช่น 1, 2, 3, 4" style={inputStyle} />
+                              <select name="year" value={studentData.year} onChange={handleStudentChange} style={inputStyle}>
+                                <option value="">-- ไม่ระบุ --</option>
+                                {STUDENT_YEARS.map(year => <option key={year} value={year}>ชั้นปี {year}</option>)}
+                              </select>
                             </div>
                           </div>
 
                           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px' }}>
                             <div>
                               <label style={labelStyle}>สังกัดคณะ <span style={{color: '#ef4444'}}>*</span></label>
-                              <select required value={selectedFaculty} onChange={(e) => setSelectedFaculty(e.target.value)} style={inputStyle}>
-                                <option value="">-- เลือกคณะ --</option>
-                                {bsruDepartments[0].items.map(item => (
-                                  <option key={item} value={item}>{item}</option>
+                              <select required value={departmentId} onChange={(e) => setDepartmentId(e.target.value)} style={inputStyle}>
+                                <option value="">{departmentsError ? 'โหลดรายชื่อคณะไม่สำเร็จ' : '-- เลือกคณะ --'}</option>
+                                {(studentGroup?.items || []).map(dept => (
+                                  <option key={dept.id} value={dept.id}>{dept.name}</option>
                                 ))}
                               </select>
                             </div>
@@ -355,12 +314,12 @@ const ReportForm = () => {
                           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px' }}>
                             <div>
                               <label style={labelStyle}>สังกัดคณะ | สำนัก | หน่วยงาน <span style={{color: '#ef4444'}}>*</span></label>
-                              <select required value={selectedFaculty} onChange={(e) => setSelectedFaculty(e.target.value)} style={inputStyle}>
-                                <option value="">-- เลือกหน่วยงานสังกัด --</option>
-                                {bsruDepartments.map((group, idx) => (
-                                  <optgroup key={idx} label={`--- ${group.group} ---`}>
-                                    {group.items.map(item => (
-                                      <option key={item} value={item}>{item}</option>
+                              <select required value={departmentId} onChange={(e) => setDepartmentId(e.target.value)} style={inputStyle}>
+                                <option value="">{departmentsError ? 'โหลดรายชื่อหน่วยงานไม่สำเร็จ' : '-- เลือกหน่วยงานสังกัด --'}</option>
+                                {groups.map(group => (
+                                  <optgroup key={group.group} label={`--- ${group.group} ---`}>
+                                    {group.items.map(dept => (
+                                      <option key={dept.id} value={dept.id}>{dept.name}</option>
                                     ))}
                                   </optgroup>
                                 ))}
@@ -404,7 +363,7 @@ const ReportForm = () => {
 
                   <div>
                     <span style={labelStyle}>ระดับความรุนแรง <span style={{color: '#ef4444'}}>*</span></span>
-                    <SeverityPicker name="severity_color" value={formData.severity_color} onChange={handleChange} />
+                    <SeverityPicker name="severity_level" value={formData.severity_level} onChange={handleChange} />
                   </div>
 
                   <div>
