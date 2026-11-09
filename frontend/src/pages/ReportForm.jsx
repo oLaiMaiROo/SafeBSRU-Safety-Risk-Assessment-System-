@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { ShieldAlert, ArrowLeft, Send, CheckCircle2, ImagePlus, X, User, MapPin, GraduationCap, Briefcase, ListChecks } from 'lucide-react';
+import { ShieldAlert, ArrowLeft, Send, CheckCircle2, ImagePlus, X, User, MapPin, GraduationCap, Briefcase, ListChecks, CalendarDays } from 'lucide-react';
+import { SeverityBadge, SeverityPicker } from '../components/Severity';
+import { DEFAULT_SEVERITY_VALUE } from '../utils/severity';
 
 const bsruDepartments = [
   {
@@ -49,21 +51,24 @@ const ReportForm = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   
-  // 🌟 State สำหรับควบคุมการเปิด/ปิด Pop-up ยืนยันข้อมูล
   const [showConfirmModal, setShowConfirmModal] = useState(false);
 
   const [reporterType, setReporterType] = useState('student');
 
+  // 🌟 ดึงวันที่ปัจจุบันมาเป็นค่าเริ่มต้นแบบ YYYY-MM-DD
+  const today = new Date().toISOString().split('T')[0];
+
   const [formData, setFormData] = useState({
     reporter_name: '', 
+    incident_date: today, // 🌟 เพิ่ม state วันที่เกิดเหตุ
     location: '', 
     risk_category: '', 
     description: '', 
-    severity_color: '🟢 ผลกระทบระดับต่ำ (เฝ้าระวัง / ปฐมพยาบาล)' 
+    severity_color: DEFAULT_SEVERITY_VALUE
   });
 
   const [studentData, setStudentData] = useState({ id: '', year: '' });
-  const [personnelData, setPersonnelData] = useState({ id: '', position: '' }); 
+  const [personnelData, setPersonnelData] = useState({ position: '' });
 
   const [selectedFaculty, setSelectedFaculty] = useState('');
   const [selectedMajor, setSelectedMajor] = useState('');
@@ -114,24 +119,21 @@ const ReportForm = () => {
     setPreviewUrls(prev => prev.filter((_, index) => index !== indexToRemove));
   };
 
-  // 🌟 ฟังก์ชันที่ 1: กด Submit ฟอร์ม -> เด้ง Pop-up ให้เช็คข้อมูล
   const handleFormSubmit = (e) => {
     e.preventDefault();
-    setShowConfirmModal(true); // เปิด Pop-up สรุปข้อมูล
+    setShowConfirmModal(true); 
   };
 
-  // 🌟 ฟังก์ชันที่ 2: กดยืนยันใน Pop-up -> บันทึกข้อมูลจริงส่งไปหลังบ้าน
   const confirmAndSubmit = async () => {
-    setShowConfirmModal(false); // ปิด Pop-up
-    setIsSubmitting(true); // ล็อกปุ่มกันกดเบิ้ล
+    setShowConfirmModal(false); 
+    setIsSubmitting(true); 
 
     const submitData = new FormData();
 
-    // ดึงรหัสตามประเภทผู้แจ้ง
-    const currentId = reporterType === 'student' ? studentData.id : personnelData.id;
+    // บุคลากรไม่ต้องกรอกรหัสแล้ว จึงส่งรหัสเฉพาะนักศึกษา
+    const currentId = reporterType === 'student' ? studentData.id : '';
     submitData.append('student_id', currentId || '');
 
-    // ดึงสถานะ/ตำแหน่ง
     let currentRole = '';
     if (reporterType === 'student') {
         currentRole = studentData.year ? `นักศึกษาชั้นปี ${studentData.year}` : 'นักศึกษา';
@@ -179,10 +181,17 @@ const ReportForm = () => {
     }
   };
 
+  // แปลงรูปแบบวันที่ให้อ่านง่ายสำหรับ Pop-up
+  const formatThaiDate = (dateString) => {
+    if (!dateString) return '-';
+    const date = new Date(dateString);
+    return date.toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' });
+  };
+
   return (
     <div style={{ minHeight: '100vh', backgroundColor: '#f8fafc', padding: '40px 20px', position: 'relative', overflow: 'hidden' }}>
       
-      {/* 🌟 Pop-up ยืนยันข้อมูลก่อนบันทึก */}
+      {/* Pop-up ยืนยันข้อมูลก่อนบันทึก */}
       <AnimatePresence>
         {showConfirmModal && (
           <motion.div 
@@ -210,7 +219,7 @@ const ReportForm = () => {
                 {reporterType === 'student' ? (
                   <div><span style={{color: '#94a3b8'}}>รหัสนักศึกษา:</span> <strong style={{color: '#1e293b'}}>{studentData.id || '-'}</strong> <span style={{color: '#94a3b8'}}>&nbsp;|&nbsp; ชั้นปี:</span> <strong style={{color: '#1e293b'}}>{studentData.year || '-'}</strong></div>
                 ) : (
-                  <div><span style={{color: '#94a3b8'}}>รหัสบุคลากร:</span> <strong style={{color: '#1e293b'}}>{personnelData.id || '-'}</strong> <span style={{color: '#94a3b8'}}>&nbsp;|&nbsp; ตำแหน่ง:</span> <strong style={{color: '#1e293b'}}>{personnelData.position || '-'}</strong></div>
+                  <div><span style={{color: '#94a3b8'}}>ตำแหน่ง:</span> <strong style={{color: '#1e293b'}}>{personnelData.position || '-'}</strong></div>
                 )}
                 
                 <div><span style={{color: '#94a3b8'}}>สังกัด / หน่วยงาน:</span> <strong style={{color: '#1e293b'}}>{selectedFaculty}</strong></div>
@@ -218,10 +227,11 @@ const ReportForm = () => {
                 
                 <div style={{height: '1px', backgroundColor: '#e2e8f0', margin: '5px 0'}}></div>
                 
-                {/* สรุปข้อมูลเหตุการณ์ */}
+                {/* 🌟 สรุปข้อมูลเหตุการณ์ (เพิ่มวันที่) */}
+                <div><span style={{color: '#94a3b8'}}>วันที่เกิดเหตุ:</span> <strong style={{color: '#1e293b'}}>{formatThaiDate(formData.incident_date)}</strong></div>
                 <div><span style={{color: '#94a3b8'}}>สถานที่เกิดเหตุ:</span> <strong style={{color: '#1e293b'}}>{formData.location}</strong></div>
                 <div><span style={{color: '#94a3b8'}}>ลักษณะอุบัติเหตุ:</span> <strong style={{color: '#1e293b'}}>{formData.risk_category}</strong></div>
-                <div><span style={{color: '#94a3b8'}}>ระดับความรุนแรง:</span> <strong style={{color: formData.severity_color.includes('🔴') ? '#ef4444' : formData.severity_color.includes('🟡') ? '#d97706' : '#10b981'}}>{formData.severity_color}</strong></div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}><span style={{color: '#94a3b8'}}>ระดับความรุนแรง:</span> <SeverityBadge value={formData.severity_color} size="sm" /></div>
                 {formData.description && (
                   <div>
                     <span style={{color: '#94a3b8', display: 'block', marginBottom: '4px'}}>รายละเอียด:</span> 
@@ -243,7 +253,6 @@ const ReportForm = () => {
           </motion.div>
         )}
       </AnimatePresence>
-      {/* 🌟 จบโซน Pop-up */}
 
 
       <motion.div animate={{ x: [0, 30, -20, 0], y: [0, -30, 20, 0] }} transition={{ repeat: Infinity, duration: 15 }} style={{ position: 'absolute', top: '5%', right: '10%', width: '300px', height: '300px', backgroundColor: '#e9d5ff', borderRadius: '50%', filter: 'blur(80px)', opacity: 0.5, zIndex: 0 }} />
@@ -270,7 +279,6 @@ const ReportForm = () => {
               <p style={{ color: '#64748b' }}>กำลังพากลับสู่หน้าหลัก...</p>
             </motion.div>
           ) : (
-            // เปลี่ยนจาก onSubmit={handleSubmit} เป็น handleFormSubmit
             <form onSubmit={handleFormSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '25px' }}>
 
               <div style={{ backgroundColor: '#f8fafc', padding: '24px', borderRadius: '16px', border: '1px solid #e2e8f0' }}>
@@ -279,7 +287,6 @@ const ReportForm = () => {
                 </h3>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px', alignItems: 'end' }}>
                     <div>
                       <label style={labelStyle}>ชื่อ - นามสกุล <span style={{color: '#ef4444'}}>*</span></label>
@@ -311,7 +318,6 @@ const ReportForm = () => {
                     <AnimatePresence mode="wait">
                       {reporterType === 'student' ? (
                         <motion.div key="student" initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 10 }} transition={{ duration: 0.2 }} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-
                           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px' }}>
                             <div>
                               <label style={labelStyle}>รหัสนักศึกษา (ถ้ามี)</label>
@@ -338,20 +344,12 @@ const ReportForm = () => {
                               <input type="text" value={selectedMajor} onChange={(e) => setSelectedMajor(e.target.value)} placeholder="เช่น วิทยาการคอมพิวเตอร์" style={inputStyle} />
                             </div>
                           </div>
-
                         </motion.div>
                       ) : (
                         <motion.div key="personnel" initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }} transition={{ duration: 0.2 }} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-
-                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px' }}>
-                            <div>
-                              <label style={labelStyle}>ตำแหน่ง <span style={{color: '#ef4444'}}>*</span></label>
-                              <input type="text" name="position" required value={personnelData.position} onChange={handlePersonnelChange} placeholder="เช่น อาจารย์, เลขาหลักสูตร" style={inputStyle} />
-                            </div>
-                            <div>
-                              <label style={labelStyle}>รหัสบุคลากร (ถ้ามี)</label>
-                              <input type="text" name="id" value={personnelData.id} onChange={handlePersonnelChange} placeholder="เช่น EMP-12345" style={inputStyle} />
-                            </div>
+                          <div>
+                            <label style={labelStyle}>ตำแหน่ง <span style={{color: '#ef4444'}}>*</span></label>
+                            <input type="text" name="position" required value={personnelData.position} onChange={handlePersonnelChange} placeholder="เช่น อาจารย์, เลขาหลักสูตร" style={inputStyle} />
                           </div>
 
                           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px' }}>
@@ -373,7 +371,6 @@ const ReportForm = () => {
                               <input type="text" value={selectedMajor} onChange={(e) => setSelectedMajor(e.target.value)} placeholder="เช่น กองกลาง, สาขาคณิตศาสตร์" style={inputStyle} />
                             </div>
                           </div>
-
                         </motion.div>
                       )}
                     </AnimatePresence>
@@ -387,24 +384,27 @@ const ReportForm = () => {
                 </h3>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                  <div>
-                    <label style={labelStyle}>สถานที่เกิดเหตุ <span style={{color: '#ef4444'}}>*</span></label>
-                    <input type="text" name="location" required value={formData.location} onChange={handleChange} placeholder="ระบุอาคาร, ชั้น, หรือจุดสังเกต เช่น หน้าห้องแล็บ 302 อาคาร 5" style={inputStyle} />
-                  </div>
-
+                  
+                  {/* 🌟 ส่วนที่เพิ่มใหม่: วันที่ และ สถานที่ */}
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px' }}>
                     <div>
-                      <label style={labelStyle}>ลักษณะอุบัติเหตุ <span style={{color: '#ef4444'}}>*</span></label>
-                      <input type="text" name="risk_category" required value={formData.risk_category} onChange={handleChange} placeholder="เช่น ลื่นล้ม, ของมีคมบาด, ไฟฟ้าลัดวงจร" style={inputStyle} />
+                      <label style={labelStyle}>วันที่เกิดเหตุ <span style={{color: '#ef4444'}}>*</span></label>
+                      <input type="date" name="incident_date" required value={formData.incident_date} onChange={handleChange} max={today} style={inputStyle} />
                     </div>
                     <div>
-                      <label style={labelStyle}>ระดับผลกระทบ <span style={{color: '#ef4444'}}>*</span></label>
-                      <select name="severity_color" value={formData.severity_color} onChange={handleChange} style={inputStyle}>
-                        <option>🟢 ผลกระทบระดับต่ำ (เฝ้าระวัง / ปฐมพยาบาล)</option>
-                        <option>🟡 ผลกระทบระดับเฝ้าระวัง (กระทบการเรียน / ส่งแพทย์)</option>
-                        <option>🔴 ผลกระทบระดับวิกฤต (อันตรายร้ายแรง / ฉุกเฉิน)</option>
-                      </select>
+                      <label style={labelStyle}>สถานที่เกิดเหตุ <span style={{color: '#ef4444'}}>*</span></label>
+                      <input type="text" name="location" required value={formData.location} onChange={handleChange} placeholder="ระบุอาคาร, ชั้น, หรือจุดสังเกต..." style={inputStyle} />
                     </div>
+                  </div>
+
+                  <div>
+                    <label style={labelStyle}>ลักษณะอุบัติเหตุ <span style={{color: '#ef4444'}}>*</span></label>
+                    <input type="text" name="risk_category" required value={formData.risk_category} onChange={handleChange} placeholder="เช่น ลื่นล้ม, ของมีคมบาด, ไฟฟ้าลัดวงจร" style={inputStyle} />
+                  </div>
+
+                  <div>
+                    <span style={labelStyle}>ระดับความรุนแรง <span style={{color: '#ef4444'}}>*</span></span>
+                    <SeverityPicker name="severity_color" value={formData.severity_color} onChange={handleChange} />
                   </div>
 
                   <div>

@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 934 464" width="934" height="464" role="img" aria-label="ER diagram ของฐานข้อมูล safety_db: ตาราง admins 6 คอลัมน์ และตาราง reports 13 คอลัมน์ ทั้งสองตารางไม่มี foreign key เชื่อมกัน">
+<defs>
+<clipPath id="er-clip-0"><rect x="32" y="32" width="340" height="196" rx="8"/></clipPath>
+<clipPath id="er-clip-1"><rect x="562" y="32" width="340" height="378" rx="8"/></clipPath>
+</defs>
+<rect width="934" height="464" fill="#ffffff"/>
+<rect x="32" y="32" width="340" height="196" rx="8" fill="#ffffff"/>
+<g clip-path="url(#er-clip-0)">
+<rect x="32" y="32" width="340" height="40" fill="#efe6fb"/>
+<rect x="32" y="98" width="340" height="26" fill="#f6f3fb"/>
+<rect x="32" y="150" width="340" height="26" fill="#f6f3fb"/>
+<rect x="32" y="202" width="340" height="26" fill="#f6f3fb"/>
+</g>
+<text x="46" y="57" fill="#4c1d7a" font-family="Consolas, 'Courier New', monospace" font-size="15" font-weight="700" text-anchor="start">admins</text>
+<text x="358" y="57" fill="#4c1d7a" font-family="Tahoma, 'Leelawadee UI', sans-serif" font-size="12.5" font-weight="500" text-anchor="end">ผู้ดูแลระบบ</text>
+<line x1="32" y1="72" x2="372" y2="72" stroke="#d9d4e6" stroke-width="1"/>
+<line x1="32" y1="98" x2="372" y2="98" stroke="#d9d4e6" stroke-width="1"/>
+<text x="46" y="89" fill="#7e22ce" font-family="Consolas, 'Courier New', monospace" font-size="10.5" font-weight="700" text-anchor="start">PK</text>
+<text x="82" y="89" fill="#1c1730" font-family="Consolas, 'Courier New', monospace" font-size="13" font-weight="700" text-anchor="start">id</text>
+<text x="228" y="89" fill="#5d5873" font-family="Consolas, 'Courier New', monospace" font-size="12" font-weight="400" text-anchor="start">integer</text>
+<text x="46" y="115" fill="#7e22ce" font-family="Consolas, 'Courier New', monospace" font-size="10.5" font-weight="700" text-anchor="start">UK</text>
+<text x="82" y="115" fill="#1c1730" font-family="Consolas, 'Courier New', monospace" font-size="13" font-weight="400" text-anchor="start">username</text>
+<text x="228" y="115" fill="#5d5873" font-family="Consolas, 'Courier New', monospace" font-size="12" font-weight="400" text-anchor="start">varchar(50)</text>
+<text x="358" y="115" fill="#5d5873" font-family="Consolas, 'Courier New', monospace" font-size="10.5" font-weight="600" text-anchor="end">NN</text>
+<text x="82" y="141" fill="#1c1730" font-family="Consolas, 'Courier New', monospace" font-size="13" font-weight="400" text-anchor="start">password</text>
+<text x="228" y="141" fill="#5d5873" font-family="Consolas, 'Courier New', monospace" font-size="12" font-weight="400" text-anchor="start">varchar(255)</text>
+<text x="358" y="141" fill="#5d5873" font-family="Consolas, 'Courier New', monospace" font-size="10.5" font-weight="600" text-anchor="end">NN</text>
+<text x="82" y="167" fill="#1c1730" font-family="Consolas, 'Courier New', monospace" font-size="13" font-weight="400" text-anchor="start">full_name</text>
+<text x="228" y="167" fill="#5d5873" font-family="Consolas, 'Courier New', monospace" font-size="12" font-weight="400" text-anchor="start">varchar(100)</text>
+<text x="82" y="193" fill="#1c1730" font-family="Consolas, 'Courier New', monospace" font-size="13" font-weight="400" text-anchor="start">created_at</text>
+<text x="228" y="193" fill="#5d5873" font-family="Consolas, 'Courier New', monospace" font-size="12" font-weight="400" text-anchor="start">timestamp</text>
+<text x="82" y="219" fill="#1c1730" font-family="Consolas, 'Courier New', monospace" font-size="13" font-weight="400" text-anchor="start">is_online</text>
+<text x="228" y="219" fill="#5d5873" font-family="Consolas, 'Courier New', monospace" font-size="12" font-weight="400" text-anchor="start">boolean</text>
+<rect x="32.5" y="32.5" width="339" height="195" rx="8" fill="none" stroke="#d9d4e6" stroke-width="1"/>
+<rect x="562" y="32" width="340" height="378" rx="8" fill="#ffffff"/>
+<g clip-path="url(#er-clip-1)">
+<rect x="562" y="32" width="340" height="40" fill="#efe6fb"/>
+<rect x="562" y="98" width="340" height="26" fill="#f6f3fb"/>
+<rect x="562" y="150" width="340" height="26" fill="#f6f3fb"/>
+<rect x="562" y="202" width="340" height="26" fill="#f6f3fb"/>
+<rect x="562" y="254" width="340" height="26" fill="#f6f3fb"/>
+<rect x="562" y="306" width="340" height="26" fill="#f6f3fb"/>
+<rect x="562" y="358" width="340" height="26" fill="#f6f3fb"/>
+</g>
+<text x="576" y="57" fill="#4c1d7a" font-family="Consolas, 'Courier New', monospace" font-size="15" font-weight="700" text-anchor="start">reports</text>
+<text x="888" y="57" fill="#4c1d7a" font-family="Tahoma, 'Leelawadee UI', sans-serif" font-size="12.5" font-weight="500" text-anchor="end">รายการแจ้งเหตุ</text>
+<line x1="562" y1="72" x2="902" y2="72" stroke="#d9d4e6" stroke-width="1"/>
+<line x1="562" y1="98" x2="902" y2="98" stroke="#d9d4e6" stroke-width="1"/>
+<text x="576" y="89" fill="#7e22ce" font-family="Consolas, 'Courier New', monospace" font-size="10.5" font-weight="700" text-anchor="start">PK</text>
+<text x="612" y="89" fill="#1c1730" font-family="Consolas, 'Courier New', monospace" font-size="13" font-weight="700" text-anchor="start">id</text>
+<text x="758" y="89" fill="#5d5873" font-family="Consolas, 'Courier New', monospace" font-size="12" font-weight="400" text-anchor="start">integer</text>
+<text x="612" y="115" fill="#1c1730" font-family="Consolas, 'Courier New', monospace" font-size="13" font-weight="400" text-anchor="start">reporter_name</text>
+<text x="758" y="115" fill="#5d5873" font-family="Consolas, 'Courier New', monospace" font-size="12" font-weight="400" text-anchor="start">varchar(100)</text>
+<text x="612" y="141" fill="#1c1730" font-family="Consolas, 'Courier New', monospace" font-size="13" font-weight="400" text-anchor="start">reporter_role</text>
+<text x="758" y="141" fill="#5d5873" font-family="Consolas, 'Courier New', monospace" font-size="12" font-weight="400" text-anchor="start">varchar(50)</text>
+<text x="612" y="167" fill="#1c1730" font-family="Consolas, 'Courier New', monospace" font-size="13" font-weight="400" text-anchor="start">faculty</text>
+<text x="758" y="167" fill="#5d5873" font-family="Consolas, 'Courier New', monospace" font-size="12" font-weight="400" text-anchor="start">varchar(100)</text>
+<text x="612" y="193" fill="#1c1730" font-family="Consolas, 'Courier New', monospace" font-size="13" font-weight="400" text-anchor="start">location</text>
+<text x="758" y="193" fill="#5d5873" font-family="Consolas, 'Courier New', monospace" font-size="12" font-weight="400" text-anchor="start">varchar(255)</text>
+<text x="888" y="193" fill="#5d5873" font-family="Consolas, 'Courier New', monospace" font-size="10.5" font-weight="600" text-anchor="end">NN</text>
+<text x="612" y="219" fill="#1c1730" font-family="Consolas, 'Courier New', monospace" font-size="13" font-weight="400" text-anchor="start">risk_category</text>
+<text x="758" y="219" fill="#5d5873" font-family="Consolas, 'Courier New', monospace" font-size="12" font-weight="400" text-anchor="start">varchar(100)</text>
+<text x="888" y="219" fill="#5d5873" font-family="Consolas, 'Courier New', monospace" font-size="10.5" font-weight="600" text-anchor="end">NN</text>
+<text x="612" y="245" fill="#1c1730" font-family="Consolas, 'Courier New', monospace" font-size="13" font-weight="400" text-anchor="start">description</text>
+<text x="758" y="245" fill="#5d5873" font-family="Consolas, 'Courier New', monospace" font-size="12" font-weight="400" text-anchor="start">text</text>
+<text x="612" y="271" fill="#1c1730" font-family="Consolas, 'Courier New', monospace" font-size="13" font-weight="400" text-anchor="start">severity_color</text>
+<text x="758" y="271" fill="#5d5873" font-family="Consolas, 'Courier New', monospace" font-size="12" font-weight="400" text-anchor="start">varchar(255)</text>
+<text x="888" y="271" fill="#5d5873" font-family="Consolas, 'Courier New', monospace" font-size="10.5" font-weight="600" text-anchor="end">NN</text>
+<text x="612" y="297" fill="#1c1730" font-family="Consolas, 'Courier New', monospace" font-size="13" font-weight="400" text-anchor="start">image_path</text>
+<text x="758" y="297" fill="#5d5873" font-family="Consolas, 'Courier New', monospace" font-size="12" font-weight="400" text-anchor="start">text</text>
+<text x="612" y="323" fill="#1c1730" font-family="Consolas, 'Courier New', monospace" font-size="13" font-weight="400" text-anchor="start">status</text>
+<text x="758" y="323" fill="#5d5873" font-family="Consolas, 'Courier New', monospace" font-size="12" font-weight="400" text-anchor="start">varchar(50)</text>
+<text x="612" y="349" fill="#1c1730" font-family="Consolas, 'Courier New', monospace" font-size="13" font-weight="400" text-anchor="start">created_at</text>
+<text x="758" y="349" fill="#5d5873" font-family="Consolas, 'Courier New', monospace" font-size="12" font-weight="400" text-anchor="start">timestamp</text>
+<text x="612" y="375" fill="#1c1730" font-family="Consolas, 'Courier New', monospace" font-size="13" font-weight="400" text-anchor="start">student_id</text>
+<text x="758" y="375" fill="#5d5873" font-family="Consolas, 'Courier New', monospace" font-size="12" font-weight="400" text-anchor="start">varchar(50)</text>
+<text x="612" y="401" fill="#1c1730" font-family="Consolas, 'Courier New', monospace" font-size="13" font-weight="400" text-anchor="start">major</text>
+<text x="758" y="401" fill="#5d5873" font-family="Consolas, 'Courier New', monospace" font-size="12" font-weight="400" text-anchor="start">varchar(255)</text>
+<rect x="562.5" y="32.5" width="339" height="377" rx="8" fill="none" stroke="#d9d4e6" stroke-width="1"/>
+<text x="467.0" y="126.0" fill="#5d5873" font-family="Tahoma, 'Leelawadee UI', sans-serif" font-size="12.5" font-weight="500" text-anchor="middle">ไม่มีความสัมพันธ์</text>
+<text x="467.0" y="144.0" fill="#5d5873" font-family="Tahoma, 'Leelawadee UI', sans-serif" font-size="12" font-weight="400" text-anchor="middle">(ไม่มี Foreign Key)</text>
+<text x="32" y="440" fill="#5d5873" font-family="Consolas, 'Courier New', monospace" font-size="11.5" font-weight="400" text-anchor="start">PK = Primary Key</text>
+<text x="182" y="440" fill="#5d5873" font-family="Consolas, 'Courier New', monospace" font-size="11.5" font-weight="400" text-anchor="start">UK = Unique</text>
+<text x="296" y="440" fill="#5d5873" font-family="Consolas, 'Courier New', monospace" font-size="11.5" font-weight="400" text-anchor="start">NN = Not Null</text>
+</svg>

@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Search, Calendar, FileSearch, Trash2, Download, FileText, CheckSquare, Filter, User, Building, Hash } from 'lucide-react';
+import { SeverityBadge } from '../components/Severity';
+import { SEVERITY_LEVELS, getSeverity, getSeverityLabel } from '../utils/severity';
 
 const bsruFaculties = [
   "คณะวิทยาศาสตร์และเทคโนโลยี", "คณะครุศาสตร์", "คณะมนุษยศาสตร์และสังคมศาสตร์", 
@@ -32,26 +34,20 @@ const ReportList = () => {
       .catch(err => console.error('Error:', err));
   }, []);
 
-  const getSeverityBadge = (severityStr) => {
-    const str = severityStr || '';
-    if (str.includes('🔴')) return { label: '🔴 ระดับวิกฤต', bg: '#fee2e2', text: '#ef4444' };
-    if (str.includes('🟡')) return { label: '🟡 ระดับเฝ้าระวัง', bg: '#fef3c7', text: '#d97706' };
-    if (str.includes('🟢')) return { label: '🟢 ระดับต่ำ', bg: '#d1fae5', text: '#059669' };
-    return { label: str || 'ไม่ระบุ', bg: '#f1f5f9', text: '#64748b' };
-  };
-
   const filteredReports = reports.filter(report => {
     const matchName = (report.reporter_name || '').toLowerCase().includes(searchName.toLowerCase());
     const matchId = (report.student_id || '').toLowerCase().includes(searchId.toLowerCase());
     const matchFaculty = filterFaculty === '' || (report.faculty || '').includes(filterFaculty);
     
+    // 🌟 เปลี่ยนมากรองจากวันที่เกิดเหตุ (incident_date)
     let matchDate = true;
     if (filterDate) {
-      const reportDate = new Date(report.created_at).toISOString().split('T')[0];
+      const targetDate = report.incident_date || report.created_at;
+      const reportDate = new Date(targetDate).toISOString().split('T')[0];
       matchDate = reportDate === filterDate;
     }
 
-    const matchSeverity = filterSeverity === '' || (report.severity_color || '').includes(filterSeverity);
+    const matchSeverity = filterSeverity === '' || getSeverity(report.severity_color).level === Number(filterSeverity);
 
     return matchName && matchId && matchFaculty && matchDate && matchSeverity;
   });
@@ -91,39 +87,30 @@ const ReportList = () => {
     }
   };
 
-  // 🌟 ฟังก์ชันปรับปรุงรูปแบบไฟล์ Excel ให้สะอาด เป็นระเบียบ อ่านง่าย
   const generateExcel = (dataList, filename) => {
-    // ใส่ \uFEFF บังคับให้ Excel เปิดไฟล์เป็น UTF-8 เสมอ จะได้ไม่เจอภาษาไทยเพี้ยนเป็นตัวยึกยือ
     let csvContent = "\uFEFF"; 
 
-    // ใส่หัวเรื่องด้านบนตารางเพื่อความสวยงาม
     csvContent += "รายงานข้อมูลรายการแจ้งอุบัติเหตุ (BSRU)\n";
     csvContent += `วันที่ออกรายงาน: ${new Date().toLocaleDateString('th-TH')}\n\n`;
 
-    // หัวตาราง (ตัดคอลัมน์ที่ไม่จำเป็น และเรียงใหม่ให้เป็นสัดส่วน)
-    csvContent += "ID แจ้งเหตุ,วันที่แจ้ง,เวลาที่แจ้ง,รหัสประจำตัว,ชื่อ-นามสกุล,สถานะ/ตำแหน่ง,หน่วยงานสังกัด,สาขา/แผนก,ลักษณะอุบัติเหตุ,ระดับผลกระทบ,สถานที่เกิดเหตุ,รายละเอียด\n";
+    // 🌟 เปลี่ยนหัวตารางเป็น วันที่เกิดเหตุ
+    csvContent += "ID แจ้งเหตุ,วันที่เกิดเหตุ,เวลาที่แจ้ง(บันทึกเข้าระบบ),รหัสประจำตัว,ชื่อ-นามสกุล,สถานะ/ตำแหน่ง,หน่วยงานสังกัด,สาขา/แผนก,ลักษณะอุบัติเหตุ,ระดับผลกระทบ,สถานที่เกิดเหตุ,รายละเอียด\n";
 
     dataList.forEach(r => {
-      // จัดการวันที่และเวลา
-      const fullDate = new Date(r.created_at);
-      const dateStr = fullDate.toLocaleDateString('th-TH');
-      const timeStr = fullDate.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+      // 🌟 ดึงวันที่จาก incident_date เป็นหลัก
+      const targetDate = r.incident_date || r.created_at;
+      const dateStr = new Date(targetDate).toLocaleDateString('th-TH');
+      
+      // เวลา ให้ยึดจากเวลาที่กดส่งฟอร์มเข้าระบบ (created_at)
+      const timeStr = new Date(r.created_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
 
-      // ทำความสะอาดข้อความ เพื่อไม่ให้คอมม่า (,) ในข้อความไปตัดคอลัมน์ Excel พัง
-      // โดยการเอา "ครอบข้อความ" ไว้ (CSV Standard)
       const cleanStr = (str) => str ? `"${String(str).replace(/"/g, '""')}"` : '"-"';
 
-      // ดึงระดับความรุนแรงมาสั้นๆ เช่น "ระดับวิกฤต", "ระดับต่ำ" 
-      let cleanSeverity = r.severity_color || '';
-      if(cleanSeverity.includes('วิกฤต')) cleanSeverity = "ระดับวิกฤต";
-      else if(cleanSeverity.includes('เฝ้าระวัง')) cleanSeverity = "ระดับเฝ้าระวัง";
-      else if(cleanSeverity.includes('ต่ำ')) cleanSeverity = "ระดับต่ำ";
+      const cleanSeverity = cleanStr(getSeverityLabel(r.severity_color));
 
-      // นำข้อมูลเรียงต่อกันตามหัวตาราง
       csvContent += `${r.id},${dateStr},${timeStr},${cleanStr(r.student_id)},${cleanStr(r.reporter_name)},${cleanStr(r.reporter_role)},${cleanStr(r.faculty)},${cleanStr(r.major)},${cleanStr(r.risk_category)},${cleanSeverity},${cleanStr(r.location)},${cleanStr(r.description)}\n`;
     });
 
-    // ดาวน์โหลดไฟล์
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
@@ -200,17 +187,16 @@ const ReportList = () => {
             </div>
 
             <div>
-              <label style={filterLabelStyle}>วันที่แจ้งเหตุ</label>
+              {/* 🌟 เปลี่ยน Label เป็นวันที่เกิดเหตุ */}
+              <label style={filterLabelStyle}>วันที่เกิดเหตุ</label>
               <input type="date" value={filterDate} onChange={(e) => {setFilterDate(e.target.value); setCurrentPage(1);}} style={{...filterInputStyle, paddingLeft: '12px'}} />
             </div>
 
             <div>
-              <label style={filterLabelStyle}>ระดับผลกระทบ</label>
+              <label style={filterLabelStyle}>ระดับความรุนแรง</label>
               <select value={filterSeverity} onChange={(e) => {setFilterSeverity(e.target.value); setCurrentPage(1);}} style={{...filterInputStyle, paddingLeft: '12px', backgroundColor: 'white'}}>
                 <option value="">ทุกระดับ (แสดงทั้งหมด)</option>
-                <option value="🟢">🟢 ผลกระทบระดับต่ำ</option>
-                <option value="🟡">🟡 ผลกระทบระดับเฝ้าระวัง</option>
-                <option value="🔴">🔴 ผลกระทบระดับวิกฤต</option>
+                {SEVERITY_LEVELS.map(s => <option key={s.level} value={s.level}>{s.label}</option>)}
               </select>
             </div>
 
@@ -225,26 +211,27 @@ const ReportList = () => {
                   <th style={{ padding: '15px', width: '50px', textAlign: 'center' }}>
                     <input type="checkbox" onChange={handleSelectAll} checked={currentItems.length > 0 && currentItems.every(item => selectedIds.includes(item.id))} style={{ transform: 'scale(1.2)', cursor: 'pointer' }} />
                   </th>
-                  <th style={{ padding: '15px' }}>วันที่แจ้ง</th>
+                  {/* 🌟 เปลี่ยนหัวตาราง */}
+                  <th style={{ padding: '15px' }}>วันที่เกิดเหตุ</th>
                   <th style={{ padding: '15px' }}>รหัสประจำตัว</th>
                   <th style={{ padding: '15px' }}>ชื่อผู้แจ้ง</th>
                   <th style={{ padding: '15px' }}>สังกัด / สาขา</th>
                   <th style={{ padding: '15px' }}>สถานที่</th>
                   <th style={{ padding: '15px' }}>ลักษณะเหตุ</th>
-                  <th style={{ padding: '15px', textAlign: 'center' }}>ระดับผลกระทบ</th>
+                  <th style={{ padding: '15px', textAlign: 'center' }}>ระดับความรุนแรง</th>
                   <th style={{ padding: '15px', textAlign: 'center' }}>แอ็กชัน</th>
                 </tr>
               </thead>
               <tbody>
                 {currentItems.length > 0 ? currentItems.map((report) => {
-                  const badge = getSeverityBadge(report.severity_color);
                   return (
                     <tr key={report.id} style={{ borderBottom: '1px solid #f1f5f9', transition: 'background-color 0.2s', backgroundColor: selectedIds.includes(report.id) ? '#f0fdf4' : 'transparent' }}>
                       <td style={{ padding: '15px', textAlign: 'center' }}>
                         <input type="checkbox" checked={selectedIds.includes(report.id)} onChange={() => handleSelectOne(report.id)} style={{ transform: 'scale(1.2)', cursor: 'pointer' }} />
                       </td>
                       <td style={{ padding: '15px', color: '#475569', fontSize: '13px' }}>
-                        {new Date(report.created_at).toLocaleDateString('th-TH')}
+                        {/* 🌟 โชว์วันที่เกิดเหตุ */}
+                        {new Date(report.incident_date || report.created_at).toLocaleDateString('th-TH')}
                       </td>
                       <td style={{ padding: '15px', color: '#1e293b', fontSize: '14px', fontWeight: '500' }}>
                         {report.student_id || '-'}
@@ -261,12 +248,7 @@ const ReportList = () => {
                       <td style={{ padding: '15px', color: '#475569', fontSize: '13px' }}>{report.risk_category}</td>
                       
                       <td style={{ padding: '15px', textAlign: 'center', whiteSpace: 'nowrap' }}>
-                        <span style={{ 
-                          display: 'inline-block', padding: '6px 12px', borderRadius: '50px', fontSize: '12px', fontWeight: '600',
-                          backgroundColor: badge.bg, color: badge.text, whiteSpace: 'nowrap'
-                        }}>
-                          {badge.label}
-                        </span>
+                        <SeverityBadge value={report.severity_color} size="sm" />
                       </td>
                       
                       <td style={{ padding: '15px' }}>
@@ -318,27 +300,28 @@ const ReportList = () => {
         <table className="print-table">
           <thead>
             <tr>
-              <th>วันที่แจ้ง</th>
+              {/* 🌟 เปลี่ยนหัวตารางตอนพิมพ์ */}
+              <th>วันที่เกิดเหตุ</th>
               <th>รหัสประจำตัว</th>
               <th>ผู้แจ้ง/สถานะ</th>
               <th>สังกัด/สาขา</th>
               <th>สถานที่</th>
               <th>ลักษณะอุบัติเหตุ</th>
-              <th>ระดับผลกระทบ</th>
+              <th>ระดับความรุนแรง</th>
             </tr>
           </thead>
           <tbody>
             {dataToPrint.map(report => {
-              const badge = getSeverityBadge(report.severity_color);
               return (
                 <tr key={report.id}>
-                  <td>{new Date(report.created_at).toLocaleDateString('th-TH')}</td>
+                  {/* 🌟 โชว์วันที่เกิดเหตุตอนพิมพ์ */}
+                  <td>{new Date(report.incident_date || report.created_at).toLocaleDateString('th-TH')}</td>
                   <td>{report.student_id || '-'}</td>
                   <td>{report.reporter_name || 'ไม่ระบุชื่อ'} <br/><span style={{fontSize:'10px', color:'#666'}}>{report.reporter_role}</span></td>
                   <td>{report.faculty || '-'}<br/><span style={{fontSize:'10px', color:'#666'}}>{report.major || '-'}</span></td>
                   <td>{report.location}</td>
                   <td>{report.risk_category}</td>
-                  <td>{badge.label}</td>
+                  <td>{getSeverityLabel(report.severity_color)}</td>
                 </tr>
               );
             })}

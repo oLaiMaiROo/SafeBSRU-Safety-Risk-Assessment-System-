@@ -8,10 +8,13 @@ A comprehensive web-based platform designed for monitoring, reporting, and evalu
     The central hub for monitoring overall accident and risk data in real-time. Features dynamic statistical filtering (1 month, 3 months, 6 months, All) to accurately summarize total incidents and severity proportions across different faculties and departments.
 
 *   **🚦 Surveillance List & Severity Status**
-    Clearly categorizes incident report statuses for quick intervention and situation assessment:
-    *   🔴 **CRITICAL:** Severe danger / Emergency response required.
-    *   🟡 **WARNING:** Affects learning / Requires medical attention.
-    *   🟢 **LOW:** Surveillance / Basic first aid needed.
+    Classifies the severity of each incident that affects a person into 4 levels (green → yellow → orange → red):
+    *   **Level 1 – เล็กน้อย (Minor):** Minor injury, first aid only.
+    *   **Level 2 – ปานกลาง (Moderate):** Injury that requires medical treatment.
+    *   **Level 3 – สูง (High):** Serious injury or illness.
+    *   **Level 4 – สูงมาก (Very high):** Disability or death.
+
+    Reports saved under the old 3-level scale are shown as Level 1 (low), Level 2 (warning) and Level 3 (critical).
 
 *   **🔍 Evidence Data Management & Filters**
     *   **In-depth Search:** Search incident history using reporter ID, full name, or filter by specific faculty and department.

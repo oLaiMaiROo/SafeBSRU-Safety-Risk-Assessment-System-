@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ShieldAlert, ArrowRight, Activity, Lock, User as UserIcon, X } from 'lucide-react';
+import { ArrowRight, Activity, Lock, User as UserIcon, X } from 'lucide-react';
 import AeroShards from './AeroShards';
 
 const Landing = () => {
@@ -117,7 +117,7 @@ const Landing = () => {
         style={{ position: 'relative', zIndex: 10, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', textAlign: 'center', padding: '0 20px' }}
       >
         <motion.div variants={itemVariants} style={{ backgroundColor: 'rgba(255, 255, 255, 0.9)', padding: '20px', borderRadius: '50%', marginBottom: '20px', backdropFilter: 'blur(10px)', boxShadow: '0 10px 30px rgba(126, 34, 206, 0.15)', border: '1px solid #e2e8f0' }}>
-          <ShieldAlert color="#7e22ce" size={60} />
+          <img src="/bsru-logo.png" alt="ตรามหาวิทยาลัยราชภัฏบ้านสมเด็จเจ้าพระยา" style={{ width: '80px', height: '80px', display: 'block', objectFit: 'contain' }} />
         </motion.div>
 
         <motion.h1 variants={itemVariants} style={{ fontSize: '52px', fontWeight: '800', color: '#0f172a', margin: '0 0 15px 0', letterSpacing: '-1px' }}>

@@ -2,7 +2,9 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, animate, useMotionValue, useSpring, useTransform, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
-import { Plus, FileText, ShieldAlert, AlertTriangle, FileSearch, TrendingUp, Search, CheckCircle2, AlertCircle, LogOut, User, UserPlus, Users, Download, CalendarDays } from 'lucide-react';
+import { Plus, FileText, ShieldAlert, FileSearch, TrendingUp, Search, LogOut, User, UserPlus, Users, Download, CalendarDays } from 'lucide-react';
+import { SeverityBadge, SeverityDot } from '../components/Severity';
+import { SEVERITY_LEVELS, UNKNOWN_SEVERITY, getSeverity } from '../utils/severity';
 
 const AnimatedCounter = ({ from = 0, to }) => {
   const [count, setCount] = React.useState(from);
@@ -135,20 +137,13 @@ const Dashboard = () => {
     window.print();
   };
 
-  const getSeverityBadge = (severityStr) => {
-    const str = severityStr || '';
-    if (str.includes('🔴')) return { label: '🔴 ระดับวิกฤต', bg: '#fee2e2', text: '#ef4444' };
-    if (str.includes('🟡')) return { label: '🟡 ระดับเฝ้าระวัง', bg: '#fef3c7', text: '#d97706' };
-    if (str.includes('🟢')) return { label: '🟢 ระดับต่ำ', bg: '#d1fae5', text: '#059669' };
-    return { label: str || 'ไม่ระบุ', bg: '#f1f5f9', text: '#64748b' };
-  };
-
-  // กรองข้อมูลตามช่วงเวลา
+  // 🌟 กรองข้อมูลตาม "วันที่เกิดเหตุ" (incident_date)
   const filteredReports = useMemo(() => {
     const now = new Date();
     return reports.filter(r => {
       if (timeFilter === 'all') return true;
-      const reportDate = new Date(r.created_at);
+      // ใช้ incident_date เป็นหลัก ถ้าไม่มีให้ใช้ created_at แทน
+      const reportDate = new Date(r.incident_date || r.created_at);
       const diffTime = Math.abs(now - reportDate);
       const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
@@ -175,24 +170,17 @@ const Dashboard = () => {
   const timeLabel = timeFilter === 'all' ? 'ทั้งหมด' : timeFilter === '1m' ? '1 เดือนล่าสุด' : timeFilter === '3m' ? '3 เดือนล่าสุด' : '6 เดือนล่าสุด';
 
   const totalReports = filteredReports.length;
-  const lowRisk = filteredReports.filter(r => r.severity_color && r.severity_color.includes('🟢')).length;
-  const mediumRisk = filteredReports.filter(r => r.severity_color && r.severity_color.includes('🟡')).length;
-  const highRisk = filteredReports.filter(r => r.severity_color && r.severity_color.includes('🔴')).length;
+  // นับจำนวนตามระดับความรุนแรง 1-4 (ข้อมูลเก่าแบบ 3 ระดับจะถูกแปลงให้อัตโนมัติ)
+  const severityStats = SEVERITY_LEVELS.map(s => ({
+    ...s,
+    count: filteredReports.filter(r => getSeverity(r.severity_color).level === s.level).length,
+  }));
+  const unknownCount = totalReports - severityStats.reduce((sum, s) => sum + s.count, 0);
+  const severityLegend = unknownCount > 0 ? [...severityStats, { ...UNKNOWN_SEVERITY, count: unknownCount }] : severityStats;
 
-  const severityCount = filteredReports.reduce((acc, curr) => {
-    const color = curr.severity_color || 'ไม่ระบุ';
-    acc[color] = (acc[color] || 0) + 1;
-    return acc;
-  }, {});
-  const pieChartData = Object.keys(severityCount).map(key => ({ name: key, value: severityCount[key] }));
-  
-  const getPieColor = (severityName) => {
-    if (!severityName) return '#94a3b8';
-    if (severityName.includes('🔴')) return '#ef4444';
-    if (severityName.includes('🟡')) return '#f59e0b';
-    if (severityName.includes('🟢')) return '#10b981';
-    return '#8b5cf6';
-  };
+  const pieChartData = severityLegend
+    .filter(s => s.count > 0)
+    .map(s => ({ name: s.label, value: s.count, color: s.color }));
 
   const facultyCount = filteredReports.reduce((acc, curr) => {
     const fac = curr.faculty || 'ไม่ระบุสังกัด';
@@ -201,7 +189,7 @@ const Dashboard = () => {
   }, {});
   const barChartData = Object.keys(facultyCount).map(key => ({ name: key, value: facultyCount[key] }));
 
-  // 🌟 อัลกอริทึมวาดกราฟเส้น: สร้างวันที่ล่วงหน้าและเติมเลข 0 ให้ครบทุกวัน
+  // 🌟 สร้างกราฟเส้นอิงจากวันที่เกิดเหตุ (incident_date)
   const lineChartData = (() => {
     const now = new Date();
     let startDate = new Date();
@@ -211,7 +199,7 @@ const Dashboard = () => {
     else if (timeFilter === '6m') startDate.setDate(now.getDate() - 180);
     else {
       if (filteredReports.length > 0) {
-        const dates = filteredReports.map(r => new Date(r.created_at).getTime());
+        const dates = filteredReports.map(r => new Date(r.incident_date || r.created_at).getTime());
         startDate = new Date(Math.min(...dates));
       } else {
         startDate.setDate(now.getDate() - 7); 
@@ -225,12 +213,14 @@ const Dashboard = () => {
     const dateMap = {};
     for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
       const dateStr = d.toLocaleDateString('th-TH', { year: 'numeric', month: 'short', day: 'numeric' });
-      dateMap[dateStr] = 0; // เติม 0 ไว้ก่อนทุกวัน
+      dateMap[dateStr] = 0; 
     }
 
     filteredReports.forEach(r => {
-      if(!r.created_at) return;
-      const d = new Date(r.created_at);
+      const targetDate = r.incident_date || r.created_at;
+      if(!targetDate) return;
+      
+      const d = new Date(targetDate);
       const dateStr = d.toLocaleDateString('th-TH', { year: 'numeric', month: 'short', day: 'numeric' });
       if(dateMap[dateStr] !== undefined) {
         dateMap[dateStr] += 1;
@@ -242,7 +232,11 @@ const Dashboard = () => {
     return Object.keys(dateMap).map(key => ({ date: key, count: dateMap[key] }));
   })();
 
-  const recentReports = [...filteredReports].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 5);
+  // 🌟 เรียงตารางจากวันที่เกิดเหตุล่าสุด
+  const recentReports = [...filteredReports]
+    .sort((a, b) => new Date(b.incident_date || b.created_at) - new Date(a.incident_date || a.created_at))
+    .slice(0, 5);
+
   const cardStyle = { backgroundColor: 'rgba(255,255,255,0.9)', padding: '24px', borderRadius: '16px', border: '1px solid #e2e8f0', backdropFilter: 'blur(10px)', boxShadow: "0 4px 15px rgba(0,0,0,0.02)" };
 
   const handleExportExcelStats = () => {
@@ -254,12 +248,13 @@ const Dashboard = () => {
 
     csvContent += "--- สรุปภาพรวม ---\n";
     csvContent += `การแจ้งเหตุทั้งหมด,${totalReports} รายการ\n`;
-    csvContent += `อุบัติเหตุผลกระทบระดับต่ำ,${lowRisk} รายการ\n`;
-    csvContent += `อุบัติเหตุระดับเฝ้าระวัง,${mediumRisk} รายการ\n`;
-    csvContent += `อุบัติเหตุระดับวิกฤต,${highRisk} รายการ\n\n`;
+    severityLegend.forEach(s => {
+      csvContent += `"${s.label}${s.description ? ` (${s.description})` : ''}",${s.count} รายการ\n`;
+    });
+    csvContent += "\n";
 
     csvContent += "--- สถิติรายวัน (ความถี่ในการเกิดเหตุ) ---\n";
-    csvContent += "วันที่ (วัน/เดือน/ปี),จำนวนการแจ้งเหตุ (ครั้ง)\n";
+    csvContent += "วันที่ (วัน/เดือน/ปี),จำนวนการเกิดเหตุ (ครั้ง)\n";
     lineChartData.forEach(d => { csvContent += `${d.date},${d.count}\n`; });
     csvContent += "\n";
 
@@ -295,7 +290,6 @@ const Dashboard = () => {
 
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }} style={{ maxWidth: '1200px', margin: '0 auto', position: 'relative', zIndex: 10, flex: 1, width: '100%' }}>
         
-        {/* ส่วนหัว */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
           <div>
             <h1 style={{ margin: 0, fontSize: '28px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '10px', color: '#0f172a', letterSpacing: '-0.5px' }}>
@@ -340,7 +334,6 @@ const Dashboard = () => {
           </div>
         </div>
 
-        {/* แถบเครื่องมือ Toolbar (ตัวกรอง และ ปุ่ม Action) */}
         <div className="no-print" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'white', padding: '16px 24px', borderRadius: '16px', border: '1px solid #e2e8f0', boxShadow: '0 4px 15px rgba(0,0,0,0.02)', marginBottom: '30px', flexWrap: 'wrap', gap: '15px' }}>
           
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -364,7 +357,7 @@ const Dashboard = () => {
               <Search size={16} color="#8b5cf6" /> ค้นหาข้อมูล
             </motion.button>
             <motion.button onClick={handleExportExcelStats} whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} style={{ padding: '8px 16px', display: 'flex', alignItems: 'center', gap: '8px', border: '1px solid #cbd5e1', backgroundColor: 'white', color: '#334155', borderRadius: '8px', cursor: 'pointer', fontSize: '14px', fontWeight: '600' }}>
-              <Download size={16} color="#10b981" /> Export Excel
+              <Download size={16} color="#10b981" /> สรุปเป็น Excel
             </motion.button>
             <motion.button onClick={handleExportPDF} whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} style={{ padding: '8px 16px', display: 'flex', alignItems: 'center', gap: '8px', border: '1px solid #cbd5e1', backgroundColor: 'white', color: '#334155', borderRadius: '8px', cursor: 'pointer', fontSize: '14px', fontWeight: '600' }}>
               <FileText size={16} color="#3b82f6" /> Export PDF
@@ -376,54 +369,42 @@ const Dashboard = () => {
           </div>
         </div>
 
-        {/* กล่องตัวเลข */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '20px', marginBottom: '30px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '20px', marginBottom: '30px' }}>
           <TiltCard style={cardStyle}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#64748b', fontSize: '15px', marginBottom: '12px', fontWeight: '500' }}>การแจ้งเหตุ ({timeLabel})</div>
             <div style={{ fontSize: '38px', fontWeight: '700', color: '#0f172a' }}>
               <AnimatedCounter to={totalReports} /> <span style={{fontSize:'16px', color:'#94a3b8', fontWeight:'500'}}>รายการ</span>
             </div>
           </TiltCard>
-          <TiltCard style={cardStyle}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#64748b', fontSize: '15px', marginBottom: '12px', fontWeight: '500' }}><CheckCircle2 size={18} color="#10b981" /> ผลกระทบระดับต่ำ</div>
-            <div style={{ fontSize: '38px', fontWeight: '700', color: '#10b981' }}>
-              <AnimatedCounter to={lowRisk} /> <span style={{fontSize:'16px', color:'#94a3b8', fontWeight:'500'}}>รายการ</span>
-            </div>
-          </TiltCard>
-          <TiltCard style={cardStyle}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#64748b', fontSize: '15px', marginBottom: '12px', fontWeight: '500' }}><AlertCircle size={18} color="#f59e0b" /> ระดับเฝ้าระวัง</div>
-            <div style={{ fontSize: '38px', fontWeight: '700', color: '#f59e0b' }}>
-              <AnimatedCounter to={mediumRisk} /> <span style={{fontSize:'16px', color:'#94a3b8', fontWeight:'500'}}>รายการ</span>
-            </div>
-          </TiltCard>
-          <TiltCard style={cardStyle}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#64748b', fontSize: '15px', marginBottom: '12px', fontWeight: '500' }}><AlertTriangle size={18} color="#ef4444" /> ระดับวิกฤต</div>
-            <div style={{ fontSize: '38px', fontWeight: '700', color: '#ef4444' }}>
-              <AnimatedCounter to={highRisk} /> <span style={{fontSize:'16px', color:'#94a3b8', fontWeight:'500'}}>รายการ</span>
-            </div>
-          </TiltCard>
+          {severityStats.map(s => (
+            <TiltCard key={s.level} style={{ ...cardStyle, borderTop: `4px solid ${s.color}` }}>
+              <div title={s.description} style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#64748b', fontSize: '15px', marginBottom: '12px', fontWeight: '500' }}>
+                <SeverityDot color={s.color} /> {s.label}
+              </div>
+              <div style={{ fontSize: '38px', fontWeight: '700', color: s.text }}>
+                <AnimatedCounter to={s.count} /> <span style={{fontSize:'16px', color:'#94a3b8', fontWeight:'500'}}>รายการ</span>
+              </div>
+            </TiltCard>
+          ))}
         </div>
 
-        {/* 🌟 กราฟเส้น */}
         <motion.div className="print-card" whileHover={{ boxShadow: "0 15px 30px rgba(0,0,0,0.04)" }} style={cardStyle}>
           <h3 style={{ marginTop: 0, color: '#334155', fontSize: '16px', fontWeight: '600', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <TrendingUp size={18} color="#3b82f6"/> สถิติจำนวนการแจ้งเหตุรายวัน <span style={{color: '#94a3b8', fontWeight: 'normal', fontSize: '14px'}}>({timeLabel})</span>
+            <TrendingUp size={18} color="#3b82f6"/> สถิติจำนวนการเกิดเหตุรายวัน <span style={{color: '#94a3b8', fontWeight: 'normal', fontSize: '14px'}}>({timeLabel})</span>
           </h3>
           <div style={{ height: '300px', width: '100%' }}>
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={lineChartData} margin={{ top: 10, right: 20, left: -20, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                {/* minTickGap={30} ป้องกันวันที่ซ้อนทับกันถ้ามีจำนวนวันเยอะๆ */}
                 <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} minTickGap={30} />
                 <YAxis axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 13}} allowDecimals={false} />
-                <Tooltip cursor={{stroke: '#cbd5e1', strokeWidth: 1, strokeDasharray: '5 5'}} contentStyle={{borderRadius: '8px', border: 'none', boxShadow: '0 4px 15px rgba(0,0,0,0.1)'}} formatter={(value) => [`${value} ครั้ง`, 'จำนวนการแจ้ง']} labelStyle={{fontWeight: 'bold', color: '#0f172a', marginBottom: '5px'}} />
+                <Tooltip cursor={{stroke: '#cbd5e1', strokeWidth: 1, strokeDasharray: '5 5'}} contentStyle={{borderRadius: '8px', border: 'none', boxShadow: '0 4px 15px rgba(0,0,0,0.1)'}} formatter={(value) => [`${value} ครั้ง`, 'จำนวนการเกิดเหตุ']} labelStyle={{fontWeight: 'bold', color: '#0f172a', marginBottom: '5px'}} />
                 <Line type="monotone" dataKey="count" stroke="#3b82f6" strokeWidth={3} dot={{r: 4, fill: '#3b82f6', strokeWidth: 2, stroke: 'white'}} activeDot={{r: 7, fill: '#2563eb'}} />
               </LineChart>
             </ResponsiveContainer>
           </div>
         </motion.div>
 
-        {/* กราฟแท่งและกราฟวงกลม */}
         <div className="charts-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '20px', marginBottom: '30px' }}>
           
           <motion.div className="print-card" whileHover={{ boxShadow: "0 15px 30px rgba(0,0,0,0.04)" }} style={cardStyle}>
@@ -447,15 +428,26 @@ const Dashboard = () => {
             <h3 style={{ marginTop: 0, color: '#334155', fontSize: '16px', fontWeight: '600', marginBottom: '20px' }}>
               สัดส่วนระดับความรุนแรง <span style={{color: '#94a3b8', fontWeight: 'normal', fontSize: '14px'}}>({timeLabel})</span>
             </h3>
-            <div style={{ height: '280px', width: '100%' }}>
+            <div style={{ height: '210px', width: '100%' }}>
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
-                  <Pie data={pieChartData} innerRadius={70} outerRadius={100} paddingAngle={5} dataKey="value" stroke="none">
-                    {pieChartData.map((entry, index) => <Cell key={`cell-${index}`} fill={getPieColor(entry.name)} />)}
+                  <Pie data={pieChartData} innerRadius={65} outerRadius={95} paddingAngle={pieChartData.length > 1 ? 3 : 0} dataKey="value" stroke="none">
+                    {pieChartData.map((entry) => <Cell key={entry.name} fill={entry.color} />)}
                   </Pie>
-                  <Tooltip contentStyle={{borderRadius: '8px', border: 'none', boxShadow: '0 4px 15px rgba(0,0,0,0.05)'}} formatter={(value) => [`${value} รายการ`, 'จำนวน']} />
+                  <Tooltip contentStyle={{borderRadius: '8px', border: 'none', boxShadow: '0 4px 15px rgba(0,0,0,0.05)'}} formatter={(value, name) => [`${value} รายการ`, name]} />
                 </PieChart>
               </ResponsiveContainer>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '8px 24px', marginTop: '14px' }}>
+              {severityLegend.map(s => (
+                <div key={s.label} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#334155', whiteSpace: 'nowrap' }}>
+                  <SeverityDot color={s.color} />
+                  <span>{s.label}</span>
+                  <span style={{ marginLeft: 'auto', color: '#64748b', fontVariantNumeric: 'tabular-nums' }}>
+                    {s.count}{totalReports > 0 && ` (${Math.round((s.count / totalReports) * 100)}%)`}
+                  </span>
+                </div>
+              ))}
             </div>
           </motion.div>
         </div>
@@ -471,9 +463,9 @@ const Dashboard = () => {
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '900px' }}>
               <thead>
                 <tr style={{ borderBottom: '2px solid #f1f5f9', color: '#64748b', fontSize: '13px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                  <th style={{ padding: '12px 8px' }}>วันที่แจ้ง</th>
+                  <th style={{ padding: '12px 8px' }}>วันที่เกิดเหตุ</th>
                   <th style={{ padding: '12px 8px' }}>ผู้แจ้ง</th>
-                  <th style={{ padding: '12px 8px' }}>สถานที่แจ้ง</th>
+                  <th style={{ padding: '12px 8px' }}>สถานที่</th>
                   <th style={{ padding: '12px 8px' }}>ลักษณะอุบัติเหตุ</th>
                   <th style={{ padding: '12px 8px' }}>ความรุนแรง</th>
                   <th className="no-print" style={{ padding: '12px 8px', textAlign: 'center' }}>แอ็กชัน</th>
@@ -481,11 +473,10 @@ const Dashboard = () => {
               </thead>
               <tbody>
                 {recentReports.length > 0 ? recentReports.map((report) => {
-                  const badge = getSeverityBadge(report.severity_color);
                   return (
                     <tr key={report.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
                       <td style={{ padding: '14px 8px', color: '#475569', fontSize: '14px' }}>
-                        {new Date(report.created_at).toLocaleDateString('th-TH', { year: 'numeric', month: 'short', day: 'numeric' })}
+                        {new Date(report.incident_date || report.created_at).toLocaleDateString('th-TH', { year: 'numeric', month: 'short', day: 'numeric' })}
                       </td>
                       <td style={{ padding: '14px 8px', color: '#1e293b', fontSize: '14px', fontWeight: '500' }}>
                         {report.reporter_name || 'ไม่ระบุชื่อ'}
@@ -497,12 +488,7 @@ const Dashboard = () => {
                         {report.risk_category}
                       </td>
                       <td style={{ padding: '14px 8px', whiteSpace: 'nowrap' }}>
-                        <span style={{ 
-                          display: 'inline-block', padding: '6px 12px', borderRadius: '50px', fontSize: '13px', fontWeight: '600',
-                          backgroundColor: badge.bg, color: badge.text
-                        }}>
-                          {badge.label}
-                        </span>
+                        <SeverityBadge value={report.severity_color} />
                       </td>
                       <td className="no-print" style={{ padding: '14px 8px', textAlign: 'center' }}>
                         <button 

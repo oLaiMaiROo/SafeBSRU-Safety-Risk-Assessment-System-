@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, User, MapPin, AlertCircle, CalendarClock, ShieldAlert, Edit, FileText, X } from 'lucide-react';
+import { SeverityBadge } from '../components/Severity';
+import { getSeverity } from '../utils/severity';
 
 const ReportDetail = () => {
   const { id } = useParams(); 
@@ -20,14 +22,6 @@ const ReportDetail = () => {
       .catch(err => console.error('Error:', err));
   }, [id]);
 
-  const getSeverityBadge = (severityStr) => {
-    const str = severityStr || '';
-    if (str.includes('🔴')) return { label: '🔴 ระดับวิกฤต', bg: '#fee2e2', text: '#ef4444' };
-    if (str.includes('🟡')) return { label: '🟡 ระดับเฝ้าระวัง', bg: '#fef3c7', text: '#d97706' };
-    if (str.includes('🟢')) return { label: '🟢 ระดับต่ำ', bg: '#d1fae5', text: '#059669' };
-    return { label: str || 'ไม่ระบุ', bg: '#f1f5f9', text: '#64748b' };
-  };
-
   if (!report) {
     return <div style={{ textAlign: 'center', padding: '50px', color: '#64748b' }}>กำลังโหลดข้อมูล... หรือไม่พบข้อมูลนี้</div>;
   }
@@ -36,7 +30,7 @@ const ReportDetail = () => {
     window.print();
   };
 
-  const badge = getSeverityBadge(report.severity_color);
+  const severity = getSeverity(report.severity_color);
 
   return (
     <div style={{ minHeight: '100vh', backgroundColor: '#f8fafc', padding: '40px 20px', position: 'relative', overflow: 'hidden' }}>
@@ -88,9 +82,10 @@ const ReportDetail = () => {
               </div>
             </div>
             
-            <span style={{ padding: '8px 16px', borderRadius: '50px', fontSize: '14px', fontWeight: '600', backgroundColor: badge.bg, color: badge.text }}>
-              {badge.label}
-            </span>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '6px', textAlign: 'right', maxWidth: '260px' }}>
+              <SeverityBadge value={report.severity_color} size="lg" />
+              {severity.description && <span style={{ fontSize: '12px', color: '#64748b', lineHeight: 1.4 }}>{severity.description}</span>}
+            </div>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '20px', marginBottom: '30px' }}>

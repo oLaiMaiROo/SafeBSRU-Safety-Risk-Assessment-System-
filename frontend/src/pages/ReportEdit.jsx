@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ShieldAlert, ArrowLeft, Save, CheckCircle2, ImagePlus, X, User, MapPin, GraduationCap, Briefcase } from 'lucide-react';
+import { SeverityPicker } from '../components/Severity';
+import { DEFAULT_SEVERITY_VALUE, normalizeSeverityValue } from '../utils/severity';
 
 const bsruDepartments = [
   {
@@ -54,11 +56,12 @@ const ReportEdit = () => {
 
   const [formData, setFormData] = useState({
     reporter_name: '', location: '', risk_category: '', 
-    description: '', severity_color: '🟢 ผลกระทบระดับต่ำ (เฝ้าระวัง / ปฐมพยาบาล)'
+    description: '', severity_color: DEFAULT_SEVERITY_VALUE
   });
 
   const [studentData, setStudentData] = useState({ id: '', year: '' });
-  const [personnelData, setPersonnelData] = useState({ id: '', position: '' }); 
+  // id ของบุคลากรไม่มีช่องกรอกแล้ว แต่ยังเก็บค่าเดิมไว้ เพื่อไม่ให้ข้อมูลเก่าหายตอนบันทึก
+  const [personnelData, setPersonnelData] = useState({ id: '', position: '' });
 
   const [selectedFaculty, setSelectedFaculty] = useState('');
   const [selectedMajor, setSelectedMajor] = useState('');
@@ -79,7 +82,7 @@ const ReportEdit = () => {
             location: report.location || '',
             risk_category: report.risk_category || '',
             description: report.description || '',
-            severity_color: report.severity_color || '🟢 ผลกระทบระดับต่ำ (เฝ้าระวัง / ปฐมพยาบาล)'
+            severity_color: normalizeSeverityValue(report.severity_color)
           });
 
           setSelectedFaculty(report.faculty || '');
@@ -296,15 +299,9 @@ const ReportEdit = () => {
                       ) : (
                         <motion.div key="personnel" initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }} transition={{ duration: 0.2 }} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                           
-                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px' }}>
-                            <div>
-                              <label style={labelStyle}>ตำแหน่ง <span style={{color: '#ef4444'}}>*</span></label>
-                              <input type="text" name="position" required value={personnelData.position} onChange={handlePersonnelChange} style={inputStyle} />
-                            </div>
-                            <div>
-                              <label style={labelStyle}>รหัสบุคลากร (ถ้ามี)</label>
-                              <input type="text" name="id" value={personnelData.id} onChange={handlePersonnelChange} style={inputStyle} />
-                            </div>
+                          <div>
+                            <label style={labelStyle}>ตำแหน่ง <span style={{color: '#ef4444'}}>*</span></label>
+                            <input type="text" name="position" required value={personnelData.position} onChange={handlePersonnelChange} style={inputStyle} />
                           </div>
 
                           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px' }}>
@@ -346,19 +343,14 @@ const ReportEdit = () => {
                     <input type="text" name="location" required value={formData.location} onChange={handleChange} style={inputStyle} />
                   </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px' }}>
-                    <div>
-                      <label style={labelStyle}>ลักษณะอุบัติเหตุ <span style={{color: '#ef4444'}}>*</span></label>
-                      <input type="text" name="risk_category" required value={formData.risk_category} onChange={handleChange} style={inputStyle} />
-                    </div>
-                    <div>
-                      <label style={labelStyle}>ระดับผลกระทบ <span style={{color: '#ef4444'}}>*</span></label>
-                      <select name="severity_color" value={formData.severity_color} onChange={handleChange} style={inputStyle}>
-                        <option>🟢 ผลกระทบระดับต่ำ (เฝ้าระวัง / ปฐมพยาบาล)</option>
-                        <option>🟡 ผลกระทบระดับเฝ้าระวัง (กระทบการเรียน / ส่งแพทย์)</option>
-                        <option>🔴 ผลกระทบระดับวิกฤต (อันตรายร้ายแรง / ฉุกเฉิน)</option>
-                      </select>
-                    </div>
+                  <div>
+                    <label style={labelStyle}>ลักษณะอุบัติเหตุ <span style={{color: '#ef4444'}}>*</span></label>
+                    <input type="text" name="risk_category" required value={formData.risk_category} onChange={handleChange} style={inputStyle} />
+                  </div>
+
+                  <div>
+                    <span style={labelStyle}>ระดับความรุนแรง <span style={{color: '#ef4444'}}>*</span></span>
+                    <SeverityPicker name="severity_color" value={formData.severity_color} onChange={handleChange} />
                   </div>
 
                   <div>
